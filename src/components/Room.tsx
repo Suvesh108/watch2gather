@@ -12,7 +12,7 @@ import {
 import { VideoTile } from './VideoTile';
 import { ChatPanel } from './ChatPanel';
 import { CelebrationOverlay } from './CelebrationOverlay';
-import type { ChatMessage, CelebrationEvent } from '../hooks/usePeerConnection';
+import type { ChatMessage, CelebrationEvent, Participant } from '../hooks/usePeerConnection';
 
 interface RoomProps {
   myName: string;
@@ -20,7 +20,7 @@ interface RoomProps {
   roomCode: string;
   connectionStatus: 'idle' | 'setting-up' | 'waiting' | 'connecting' | 'connected' | 'disconnected' | 'error';
   localStream: MediaStream | null;
-  remoteStream: MediaStream | null;
+  participants: Participant[];
   localScreenStream: MediaStream | null;
   remoteScreenStream: MediaStream | null;
   micMuted: boolean;
@@ -44,7 +44,7 @@ export const Room: React.FC<RoomProps> = ({
   roomCode,
   connectionStatus,
   localStream,
-  remoteStream,
+  participants,
   localScreenStream,
   remoteScreenStream,
   micMuted,
@@ -211,7 +211,7 @@ export const Room: React.FC<RoomProps> = ({
               </div>
             </div>
           ) : (
-            <div className="video-grid flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 min-h-0">
+            <div className="video-grid flex-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 min-h-0 overflow-y-auto">
               <VideoTile
                 stream={localStream}
                 label={`${myName} (you)`}
@@ -219,36 +219,49 @@ export const Room: React.FC<RoomProps> = ({
                 muted={true}
                 placeholder="Setting up local video…"
               />
-              <VideoTile
-                stream={remoteStream}
-                label={friendName}
-                isLocal={false}
-                placeholder={
-                  <div className="flex flex-col items-center gap-4 text-center p-4">
-                    <span className="text-dim text-sm leading-normal">Waiting for your friend to join…</span>
-                    <div className="bg-navy-950/80 border border-navy-700 rounded-xl p-4 w-full max-w-[280px]">
-                      <div className="text-[10px] uppercase text-dim tracking-[0.12em] mb-1 font-bold">Room Code</div>
-                      <div className="font-teko text-4xl tracking-[0.2em] text-gold-bright leading-none">{roomCode}</div>
+              {participants.length === 0 ? (
+                <VideoTile
+                  stream={null}
+                  label="Friend"
+                  isLocal={false}
+                  placeholder={
+                    <div className="flex flex-col items-center gap-4 text-center p-4">
+                      <span className="text-dim text-sm leading-normal">Waiting for friends to join…</span>
+                      <div className="bg-navy-950/80 border border-navy-700 rounded-xl p-4 w-full max-w-[280px]">
+                        <div className="text-[10px] uppercase text-dim tracking-[0.12em] mb-1 font-bold">Room Code</div>
+                        <div className="font-teko text-4xl tracking-[0.2em] text-gold-bright leading-none">{roomCode}</div>
+                      </div>
+                      <button
+                        onClick={copyInviteLink}
+                        className="flex items-center gap-2 bg-navy-900 hover:bg-navy-800 border border-navy-700 text-white hover:text-gold hover:border-gold px-4 py-2.5 rounded-lg text-xs font-bold transition duration-150 active:scale-95 cursor-pointer"
+                      >
+                        {copied ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-pitch-bright" />
+                            <span className="text-pitch-bright">Link Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Copy Invite Link</span>
+                          </>
+                        )}
+                      </button>
                     </div>
-                    <button
-                      onClick={copyInviteLink}
-                      className="flex items-center gap-2 bg-navy-900 hover:bg-navy-800 border border-navy-700 text-white hover:text-gold hover:border-gold px-4 py-2.5 rounded-lg text-xs font-bold transition duration-150 active:scale-95 cursor-pointer"
-                    >
-                      {copied ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-pitch-bright" />
-                          <span className="text-pitch-bright">Link Copied!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Copy Invite Link</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                }
-              />
+                  }
+                />
+              ) : (
+                participants.map(p => (
+                  <VideoTile
+                    key={p.peerId}
+                    stream={p.stream}
+                    label={p.name}
+                    isLocal={false}
+                    muted={false}
+                    placeholder={`${p.name}'s camera off`}
+                  />
+                ))
+              )}
             </div>
           )}
 
@@ -301,22 +314,6 @@ export const Room: React.FC<RoomProps> = ({
         }`}>
           {hasPrimary && (
             <div className="w-full md:w-[180px] shrink-0 border-b md:border-b-0 md:border-r border-navy-700 p-3 flex flex-row md:flex-col gap-3 bg-navy-950 select-none overflow-x-auto md:overflow-y-auto">
-              {/* Friend's Camera */}
-              <div className="flex-1 md:flex-initial flex flex-col gap-1 min-w-[120px] md:min-w-0">
-                <div className="text-[9px] uppercase text-dim tracking-[0.12em] font-bold">
-                  {friendName}
-                </div>
-                <div className="w-full aspect-[4/3] rounded-lg overflow-hidden border border-navy-700 bg-black shadow-lg">
-                  <VideoTile
-                    stream={remoteStream}
-                    label={friendName}
-                    isLocal={false}
-                    muted={false}
-                    placeholder="Friend camera off"
-                  />
-                </div>
-              </div>
-
               {/* Your Camera */}
               <div className="flex-1 md:flex-initial flex flex-col gap-1 min-w-[120px] md:min-w-0">
                 <div className="text-[9px] uppercase text-dim tracking-[0.12em] font-bold">
@@ -332,6 +329,24 @@ export const Room: React.FC<RoomProps> = ({
                   />
                 </div>
               </div>
+
+              {/* Remote Participant Cameras */}
+              {participants.map(p => (
+                <div key={p.peerId} className="flex-1 md:flex-initial flex flex-col gap-1 min-w-[120px] md:min-w-0">
+                  <div className="text-[9px] uppercase text-dim tracking-[0.12em] font-bold">
+                    {p.name}
+                  </div>
+                  <div className="w-full aspect-[4/3] rounded-lg overflow-hidden border border-navy-700 bg-black shadow-lg">
+                    <VideoTile
+                      stream={p.stream}
+                      label={p.name}
+                      isLocal={false}
+                      muted={false}
+                      placeholder={`${p.name} camera off`}
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 

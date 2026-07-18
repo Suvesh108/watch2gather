@@ -16,11 +16,20 @@ export interface CelebrationEvent {
   triggerTime: number;
 }
 
+export interface Participant {
+  peerId: string;
+  name: string;
+  stream: MediaStream | null;
+  screenStream: MediaStream | null;
+  micMuted: boolean;
+  camDisabled: boolean;
+  screenSharing: boolean;
+}
+
 const ROOM_PREFIX = "matchday-wc26-";
 
 export function usePeerConnection() {
   const [myName, setMyName] = useState("");
-  const [friendName, setFriendName] = useState("Friend");
   const [roomCode, setRoomCode] = useState("");
   const [isHost, setIsHost] = useState(false);
   const [isInRoom, setIsInRoom] = useState(false);
@@ -28,22 +37,26 @@ export function usePeerConnection() {
   const [errorMsg, setErrorMsg] = useState("");
 
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [localScreenStream, setLocalScreenStream] = useState<MediaStream | null>(null);
+  const [participants, setParticipants] = useState<Participant[]>([]);
   
   const [micMuted, setMicMuted] = useState(false);
   const [camDisabled, setCamDisabled] = useState(false);
   const [screenSharing, setScreenSharing] = useState(false);
-  const [remoteScreenSharing, setRemoteScreenSharing] = useState(false);
   
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [activeCelebration, setActiveCelebration] = useState<CelebrationEvent | null>(null);
   const [timerSeconds, setTimerSeconds] = useState(0);
 
   const peerRef = useRef<Peer | null>(null);
-  const dataConnRef = useRef<DataConnection | null>(null);
-  const mediaCallRef = useRef<MediaConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const localScreenStreamRef = useRef<MediaStream | null>(null);
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const myNameRef = useRef("");
+  useEffect(() => {
+    myNameRef.current = myName;
+  }, [myName]);
 
   const screenSharingRef = useRef(false);
   useEffect(() => {
@@ -55,20 +68,21 @@ export function usePeerConnection() {
     isHostRef.current = isHost;
   }, [isHost]);
 
-  const [localScreenStream, setLocalScreenStream] = useState<MediaStream | null>(null);
-  const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
-
-  const screenCallRef = useRef<MediaConnection | null>(null);
-  const localScreenStreamRef = useRef<MediaStream | null>(null);
-
   useEffect(() => {
     localScreenStreamRef.current = localScreenStream;
   }, [localScreenStream]);
 
-  // Sync localStreamRef
   useEffect(() => {
     localStreamRef.current = localStream;
   }, [localStream]);
+
+  // Maintain connections to all other peers in the mesh
+  const connectionsRef = useRef<Map<string, {
+    dataConn: DataConnection;
+    mediaCall?: MediaConnection;
+    screenCall?: MediaConnection;
+    name: string;
+  }>>(new Map());
 
   // Clean up on component unmount
   useEffect(() => {
@@ -78,30 +92,27 @@ export function usePeerConnection() {
   }, []);
 
   const cleanup = useCallback(() => {
-    if (isHostRef.current && dataConnRef.current && dataConnRef.current.open) {
-      try {
-        dataConnRef.current.send({ type: "host-ended" });
-      } catch (e) {
-        console.warn("Failed to send host-ended signal", e);
-      }
+    if (isHostRef.current) {
+      connectionsRef.current.forEach(item => {
+        if (item.dataConn.open) {
+          try {
+            item.dataConn.send({ type: "host-ended" });
+          } catch (e) {}
+        }
+      });
     }
 
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
     }
-    if (mediaCallRef.current) {
-      mediaCallRef.current.close();
-      mediaCallRef.current = null;
-    }
-    if (screenCallRef.current) {
-      screenCallRef.current.close();
-      screenCallRef.current = null;
-    }
-    if (dataConnRef.current) {
-      dataConnRef.current.close();
-      dataConnRef.current = null;
-    }
+    connectionsRef.current.forEach(item => {
+      if (item.mediaCall) item.mediaCall.close();
+      if (item.screenCall) item.screenCall.close();
+      item.dataConn.close();
+    });
+    connectionsRef.current.clear();
+
     if (peerRef.current) {
       peerRef.current.destroy();
       peerRef.current = null;
@@ -113,9 +124,8 @@ export function usePeerConnection() {
       localScreenStreamRef.current.getTracks().forEach(track => track.stop());
     }
     setLocalStream(null);
-    setRemoteStream(null);
     setLocalScreenStream(null);
-    setRemoteScreenStream(null);
+    setParticipants([]);
     setConnectionStatus('idle');
     setChatMessages([]);
     setTimerSeconds(0);
@@ -123,7 +133,6 @@ export function usePeerConnection() {
     setMicMuted(false);
     setCamDisabled(false);
     setScreenSharing(false);
-    setRemoteScreenSharing(false);
   }, []);
 
   const addSystemMsg = useCallback((text: string) => {
@@ -163,16 +172,14 @@ export function usePeerConnection() {
           const params = sender.getParameters();
           if (!params.encodings) params.encodings = [{}];
           
-          // Boost parameters to maximum potential quality
+          // Sweet spot configuration to avoid buffer cues and latency, but keep high quality
           if (isScreen) {
-            params.encodings[0].maxBitrate = 20000000; // 20 Mbps for ultra-smooth screen sharing
+            params.encodings[0].maxBitrate = 5000000; // 5 Mbps for crisp 60fps casting
           } else {
-            params.encodings[0].maxBitrate = 8000000;  // 8 Mbps for pristine camera video
+            params.encodings[0].maxBitrate = 2500000; // 2.5 Mbps for HD cameras
           }
           
-          sender.setParameters(params)
-            .then(() => console.log(`Bitrate successfully boosted for ${isScreen ? 'Screen' : 'Camera'} to ${isScreen ? '20' : '8'} Mbps!`))
-            .catch(err => console.warn("Set parameters failed", err));
+          sender.setParameters(params).catch(() => {});
         }
       });
     } catch (e) {
@@ -190,28 +197,13 @@ export function usePeerConnection() {
   const playSound = useCallback((kind: string) => {
     try {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContextClass) return;
-      const audioCtx = new AudioContextClass();
-      const now = audioCtx.currentTime;
-      if (kind === "goal" || kind === "trophy") {
-        [0, 1, 2].forEach(i => {
-          const osc = audioCtx.createOscillator();
-          const gain = audioCtx.createGain();
-          osc.type = "sawtooth";
-          osc.frequency.setValueAtTime(220 + i * 40, now);
-          osc.frequency.exponentialRampToValueAtTime(440 + i * 40, now + 0.5);
-          gain.gain.setValueAtTime(0.0001, now);
-          gain.gain.exponentialRampToValueAtTime(0.15, now + 0.05);
-          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.9);
-          osc.connect(gain).connect(audioCtx.destination);
-          osc.start(now);
-          osc.stop(now + 0.95);
-        });
-      } else {
+      if (AudioContextClass) {
+        const audioCtx = new AudioContextClass();
+        const now = audioCtx.currentTime;
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         osc.type = "sine";
-        osc.frequency.setValueAtTime(660, now);
+        osc.frequency.setValueAtTime(kind === 'goal' ? 880 : 440, now);
         gain.gain.setValueAtTime(0.0001, now);
         gain.gain.exponentialRampToValueAtTime(0.2, now + 0.02);
         gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
@@ -229,121 +221,38 @@ export function usePeerConnection() {
     playSound(kind);
   }, [playSound]);
 
-  const handleData = useCallback((msg: any) => {
-    if (msg.type === "hello") {
-      setFriendName(msg.name || "Friend");
-      addSystemMsg(`${msg.name || "Your friend"} joined the watch party ⚽`);
-      startTimer();
-    } else if (msg.type === "chat") {
-      addChatMsg(msg.name, msg.text, false);
-    } else if (msg.type === "celebrate") {
-      localTriggerCelebration(msg.kind);
-      // Log the celebration in the system messages
-      const label = msg.kind.toUpperCase();
-      addSystemMsg(`${msg.name || "Friend"} hit ${label}!`);
-    } else if (msg.type === "screen-share-state") {
-      setRemoteScreenSharing(msg.active);
-      addSystemMsg(`${msg.active ? (msg.name || friendName || "Friend") + " started screen sharing." : (msg.name || friendName || "Friend") + " stopped screen sharing."}`);
-    } else if (msg.type === "host-ended") {
+  const handlePeerDisconnect = useCallback((peerId: string) => {
+    const info = connectionsRef.current.get(peerId);
+    if (info) {
+      if (info.mediaCall) info.mediaCall.close();
+      if (info.screenCall) info.screenCall.close();
+      info.dataConn.close();
+    }
+    connectionsRef.current.delete(peerId);
+    setParticipants(prev => prev.filter(p => p.peerId !== peerId));
+
+    if (peerId.endsWith("-HOST")) {
       alert("The host has ended the watch party.");
       cleanup();
+    } else {
+      addSystemMsg(`${info?.name || "A participant"} left the watch party.`);
     }
-  }, [addSystemMsg, addChatMsg, localTriggerCelebration, startTimer, friendName, cleanup]);
-
-  const setupLocalMedia = useCallback(async () => {
-    try {
-      // First try standard Full HD settings
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-      });
-      setLocalStream(stream);
-      return stream;
-    } catch (err) {
-      console.warn("Full HD getUserMedia failed, attempting fallback resolution (1280x720):", err);
-      try {
-        // Fall back to standard HD
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-        });
-        setLocalStream(stream);
-        return stream;
-      } catch (err2) {
-        console.warn("HD getUserMedia failed, attempting generic fallback:", err2);
-        try {
-          // Absolute fallback for older MacBooks, iPhones/iPads, and Safari compatibility
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: true
-          });
-          setLocalStream(stream);
-          return stream;
-        } catch (err3) {
-          console.error("All getUserMedia attempts failed:", err3);
-          throw err3;
-        }
-      }
-    }
-  }, []);
-
-  const wireDataConnection = useCallback((conn: DataConnection) => {
-    dataConnRef.current = conn;
-    
-    conn.on("open", () => {
-      setIsInRoom(true);
-      setConnectionStatus('connected');
-      conn.send({ type: "hello", name: myName });
-      if (screenSharingRef.current) {
-        conn.send({ type: "screen-share-state", name: myName, active: true });
-      }
-    });
-
-    conn.on("data", handleData);
-
-    conn.on("close", () => {
-      if (!isHostRef.current) {
-        alert("The host has left. The watch party has ended.");
-      }
-      cleanup();
-    });
-
-    conn.on("error", (err) => {
-      console.error("Data connection error", err);
-      setConnectionStatus('error');
-      addSystemMsg("Connection error encountered.");
-    });
-  }, [myName, handleData, addSystemMsg, cleanup]);
-
-  const wireScreenCall = useCallback((call: MediaConnection) => {
-    screenCallRef.current = call;
-
-    call.on("stream", (remoteStream) => {
-      setRemoteScreenStream(remoteStream);
-    });
-
-    call.on("close", () => {
-      setRemoteScreenStream(null);
-      screenCallRef.current = null;
-    });
-
-    call.on("error", (err) => {
-      console.error("Screen call error:", err);
-    });
-  }, []);
+  }, [cleanup, addSystemMsg]);
 
   const wireMediaCall = useCallback((call: MediaConnection) => {
-    mediaCallRef.current = call;
+    const peerId = call.peer;
+    const info = connectionsRef.current.get(peerId);
+    if (info) {
+      info.mediaCall = call;
+    }
 
     call.on("stream", (remoteStream) => {
-      setRemoteStream(remoteStream);
-      boostBitrate(call);
-      setConnectionStatus('connected');
+      setParticipants(prev => prev.map(p => p.peerId === peerId ? { ...p, stream: remoteStream } : p));
+      setTimeout(() => boostBitrate(call, false), 1000);
     });
 
     call.on("close", () => {
-      setConnectionStatus('disconnected');
-      setRemoteStream(null);
+      setParticipants(prev => prev.map(p => p.peerId === peerId ? { ...p, stream: null } : p));
     });
 
     call.on("error", (err) => {
@@ -351,25 +260,180 @@ export function usePeerConnection() {
     });
   }, [boostBitrate]);
 
+  const wireScreenCall = useCallback((call: MediaConnection) => {
+    const peerId = call.peer;
+    const info = connectionsRef.current.get(peerId);
+    if (info) {
+      info.screenCall = call;
+    }
+
+    call.on("stream", (remoteStream) => {
+      setParticipants(prev => prev.map(p => p.peerId === peerId ? { ...p, screenStream: remoteStream, screenSharing: true } : p));
+      setTimeout(() => boostBitrate(call, true), 1000);
+    });
+
+    call.on("close", () => {
+      setParticipants(prev => prev.map(p => p.peerId === peerId ? { ...p, screenStream: null, screenSharing: false } : p));
+    });
+
+    call.on("error", (err) => {
+      console.error("Screen call error", err);
+    });
+  }, [boostBitrate]);
+
+  const handleData = useCallback((peerId: string, msg: any) => {
+    if (msg.type === "hello") {
+      const info = connectionsRef.current.get(peerId);
+      if (info) {
+        info.name = msg.name || "Friend";
+      }
+
+      setParticipants(prev => {
+        const exists = prev.some(p => p.peerId === peerId);
+        if (exists) {
+          return prev.map(p => p.peerId === peerId ? { ...p, name: msg.name || "Friend" } : p);
+        } else {
+          return [...prev, {
+            peerId,
+            name: msg.name || "Friend",
+            stream: null,
+            screenStream: null,
+            micMuted: false,
+            camDisabled: false,
+            screenSharing: false
+          }];
+        }
+      });
+
+      addSystemMsg(`${msg.name || "A friend"} joined the watch party ⚽`);
+      startTimer();
+
+      // Coordinate mesh connection if host
+      if (isHostRef.current) {
+        const currentPeers = Array.from(connectionsRef.current.entries())
+          .filter(([id]) => id !== peerId)
+          .map(([id, item]) => ({ peerId: id, name: item.name }));
+        
+        connectionsRef.current.get(peerId)?.dataConn.send({
+          type: "peer-list",
+          peers: currentPeers
+        });
+
+        connectionsRef.current.forEach((item, id) => {
+          if (id !== peerId && item.dataConn.open) {
+            item.dataConn.send({
+              type: "new-peer",
+              peerId,
+              name: msg.name || "Friend"
+            });
+          }
+        });
+      }
+    } else if (msg.type === "peer-list") {
+      msg.peers.forEach((p: { peerId: string, name: string }) => {
+        if (peerRef.current && !connectionsRef.current.has(p.peerId)) {
+          const conn = peerRef.current.connect(p.peerId, { reliable: true });
+          wireDataConnection(conn, p.name);
+          
+          if (localStreamRef.current) {
+            const call = peerRef.current.call(p.peerId, localStreamRef.current);
+            wireMediaCall(call);
+          }
+        }
+      });
+    } else if (msg.type === "new-peer") {
+      setParticipants(prev => {
+        if (prev.some(p => p.peerId === msg.peerId)) return prev;
+        return [...prev, {
+          peerId: msg.peerId,
+          name: msg.name || "Friend",
+          stream: null,
+          screenStream: null,
+          micMuted: false,
+          camDisabled: false,
+          screenSharing: false
+        }];
+      });
+    } else if (msg.type === "chat") {
+      addChatMsg(msg.name, msg.text, false);
+    } else if (msg.type === "celebrate") {
+      localTriggerCelebration(msg.kind);
+      addSystemMsg(`${msg.name || "Friend"} hit ${msg.kind.toUpperCase()}!`);
+    } else if (msg.type === "screen-share-state") {
+      setParticipants(prev => prev.map(p => p.peerId === peerId ? { ...p, screenSharing: msg.active } : p));
+      addSystemMsg(`${msg.active ? (msg.name || "Friend") + " started screen sharing." : (msg.name || "Friend") + " stopped screen sharing."}`);
+    } else if (msg.type === "state-update") {
+      setParticipants(prev => prev.map(p => p.peerId === peerId ? { ...p, micMuted: msg.micMuted, camDisabled: msg.camDisabled } : p));
+    } else if (msg.type === "host-ended") {
+      alert("The host has ended the watch party.");
+      cleanup();
+    }
+  }, [addSystemMsg, addChatMsg, localTriggerCelebration, startTimer, cleanup, wireMediaCall]);
+
+  const wireDataConnection = useCallback((conn: DataConnection, initialName: string = "") => {
+    if (!connectionsRef.current.has(conn.peer)) {
+      connectionsRef.current.set(conn.peer, { dataConn: conn, name: initialName });
+    }
+    
+    conn.on("open", () => {
+      setIsInRoom(true);
+      setConnectionStatus('connected');
+      conn.send({ type: "hello", name: myNameRef.current });
+      if (screenSharingRef.current) {
+        conn.send({ type: "screen-share-state", name: myNameRef.current, active: true });
+      }
+    });
+
+    conn.on("data", (data) => {
+      handleData(conn.peer, data);
+    });
+
+    conn.on("close", () => {
+      handlePeerDisconnect(conn.peer);
+    });
+
+    conn.on("error", (err) => {
+      console.error("Data connection error", err);
+      handlePeerDisconnect(conn.peer);
+    });
+  }, [handleData, handlePeerDisconnect]);
+
+  const setupLocalMedia = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+      setLocalStream(stream);
+      return stream;
+    } catch (err) {
+      console.warn("Standard resolution getUserMedia failed, attempting generic fallback:", err);
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true
+        });
+        setLocalStream(stream);
+        return stream;
+      } catch (err2) {
+        console.error("All getUserMedia attempts failed:", err2);
+        throw err2;
+      }
+    }
+  }, []);
+
   const createRoom = useCallback(async (username: string) => {
-    const name = username.trim() || "Host";
-    setMyName(name);
-    setIsHost(true);
+    setMyName(username);
     setConnectionStatus('setting-up');
     setErrorMsg("");
+    setIsHost(true);
 
-    // Generate room code
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    let code = "";
-    for (let i = 0; i < 6; i++) {
-      code += chars[Math.floor(Math.random() * chars.length)];
-    }
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
     setRoomCode(code);
 
     try {
       const stream = await setupLocalMedia();
-      
-      const newPeer = new Peer(ROOM_PREFIX + code);
+      const newPeer = new Peer(ROOM_PREFIX + code + "-HOST");
       peerRef.current = newPeer;
 
       newPeer.on("open", () => {
@@ -388,56 +452,45 @@ export function usePeerConnection() {
         } else {
           call.answer(stream);
           wireMediaCall(call);
-          setTimeout(() => boostBitrate(call, false), 1000);
         }
       });
 
       newPeer.on("error", (err) => {
         console.error("Peer error:", err);
-        if (err.type === "unavailable-id") {
-          setErrorMsg("Room code collision. Please try again.");
-          cleanup();
-        } else {
-          setErrorMsg(`Connection error: ${err.type}`);
-          setConnectionStatus('error');
-        }
+        setErrorMsg("Connection error setup failed.");
+        setConnectionStatus('error');
       });
-
-    } catch (e: any) {
-      console.error("Media setup failed", e);
-      setErrorMsg(`Could not access camera/mic: ${e.message}`);
-      setConnectionStatus('idle');
+    } catch (err) {
+      console.error("Room creation media setup failed:", err);
+      setErrorMsg("Failed to access camera/mic.");
+      setConnectionStatus('error');
     }
-  }, [setupLocalMedia, wireDataConnection, wireMediaCall, cleanup]);
+  }, [setupLocalMedia, wireDataConnection, wireScreenCall, wireMediaCall]);
 
   const joinRoom = useCallback(async (username: string, code: string) => {
-    const name = username.trim() || "Friend";
     const cleanCode = code.trim().toUpperCase();
-    if (!cleanCode) {
-      setErrorMsg("Please enter a room code.");
-      return;
-    }
-    
-    setMyName(name);
-    setIsHost(false);
+    setMyName(username);
     setRoomCode(cleanCode);
     setConnectionStatus('connecting');
+    setIsHost(false);
     setErrorMsg("");
 
     try {
       const stream = await setupLocalMedia();
-      
       const newPeer = new Peer();
       peerRef.current = newPeer;
 
       newPeer.on("open", () => {
-        const targetId = ROOM_PREFIX + cleanCode;
-        const conn = newPeer.connect(targetId, { reliable: true });
-        wireDataConnection(conn);
+        const hostId = ROOM_PREFIX + cleanCode + "-HOST";
+        const conn = newPeer.connect(hostId, { reliable: true });
+        wireDataConnection(conn, "Host");
 
-        const call = newPeer.call(targetId, stream);
+        const call = newPeer.call(hostId, stream);
         wireMediaCall(call);
-        setTimeout(() => boostBitrate(call, false), 1000);
+      });
+
+      newPeer.on("connection", (conn) => {
+        wireDataConnection(conn);
       });
 
       newPeer.on("call", (call) => {
@@ -447,103 +500,76 @@ export function usePeerConnection() {
         } else {
           call.answer(stream);
           wireMediaCall(call);
-          setTimeout(() => boostBitrate(call, false), 1000);
         }
       });
 
       newPeer.on("error", (err) => {
         console.error("Peer error:", err);
-        setErrorMsg("Couldn't reach that room. Check the code and try again.");
+        setErrorMsg("Couldn't reach that room. Check the code.");
         setConnectionStatus('error');
-        cleanup();
       });
-
-    } catch (e: any) {
-      console.error("Media setup failed", e);
-      setErrorMsg(`Could not access camera/mic: ${e.message}`);
-      setConnectionStatus('idle');
+    } catch (err) {
+      console.error("Room join failed:", err);
+      setErrorMsg("Camera access needed to join party.");
+      setConnectionStatus('error');
     }
-  }, [setupLocalMedia, wireDataConnection, wireMediaCall, cleanup]);
+  }, [setupLocalMedia, wireDataConnection, wireMediaCall, wireScreenCall]);
 
   const sendChatMessage = useCallback((text: string) => {
-    if (!text.trim()) return;
-    addChatMsg(myName, text, true);
-    
-    if (dataConnRef.current && dataConnRef.current.open) {
-      dataConnRef.current.send({
-        type: "chat",
-        name: myName,
-        text
-      });
-    }
-  }, [myName, addChatMsg]);
+    addChatMsg(myNameRef.current, text, true);
+    connectionsRef.current.forEach(item => {
+      if (item.dataConn.open) {
+        item.dataConn.send({ type: "chat", name: myNameRef.current, text });
+      }
+    });
+  }, [addChatMsg]);
 
   const triggerCelebration = useCallback((kind: string) => {
     localTriggerCelebration(kind);
-    
-    // Log the celebration in the system messages locally
-    const label = kind.toUpperCase();
-    addSystemMsg(`You hit ${label}!`);
-
-    if (dataConnRef.current && dataConnRef.current.open) {
-      dataConnRef.current.send({
-        type: "celebrate",
-        name: myName,
-        kind
-      });
-    }
-  }, [myName, localTriggerCelebration, addSystemMsg]);
+    connectionsRef.current.forEach(item => {
+      if (item.dataConn.open) {
+        item.dataConn.send({ type: "celebrate", name: myNameRef.current, kind });
+      }
+    });
+  }, [localTriggerCelebration]);
 
   const toggleMic = useCallback(() => {
-    const stream = localStreamRef.current;
-    if (stream) {
-      const audioTrack = stream.getAudioTracks()[0];
-      if (audioTrack) {
-        const newEnabled = !audioTrack.enabled;
-        audioTrack.enabled = newEnabled;
-        setMicMuted(!newEnabled);
-
-        // Only modify the sender track directly if we are NOT screen sharing
-        // (Otherwise, the sender track is the mixed audio, and disabling it would silence the YouTube sound as well!)
-        if (!screenSharingRef.current) {
-          if (mediaCallRef.current && mediaCallRef.current.peerConnection) {
-            const senders = mediaCallRef.current.peerConnection.getSenders();
-            const audioSender = senders.find(s => s.track && s.track.kind === "audio");
-            if (audioSender && audioSender.track) {
-              audioSender.track.enabled = newEnabled;
-            }
-          }
-        }
-      }
+    const nextState = !micMuted;
+    setMicMuted(nextState);
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach(track => {
+        track.enabled = !nextState;
+      });
     }
-  }, []);
+    connectionsRef.current.forEach(item => {
+      if (item.dataConn.open) {
+        item.dataConn.send({ type: "state-update", name: myNameRef.current, micMuted: nextState, camDisabled });
+      }
+    });
+  }, [micMuted, camDisabled]);
 
   const toggleCam = useCallback(() => {
-    const stream = localStreamRef.current;
-    if (stream) {
-      const videoTrack = stream.getVideoTracks()[0];
-      if (videoTrack) {
-        const newEnabled = !videoTrack.enabled;
-        videoTrack.enabled = newEnabled;
-        setCamDisabled(!newEnabled);
-
-        // Direct RTCRtpSender fallback modification for active WebRTC pipeline
-        if (mediaCallRef.current && mediaCallRef.current.peerConnection) {
-          const senders = mediaCallRef.current.peerConnection.getSenders();
-          const videoSender = senders.find(s => s.track && s.track.kind === "video");
-          if (videoSender && videoSender.track) {
-            videoSender.track.enabled = newEnabled;
-          }
-        }
-      }
+    const nextState = !camDisabled;
+    setCamDisabled(nextState);
+    if (localStreamRef.current) {
+      localStreamRef.current.getVideoTracks().forEach(track => {
+        track.enabled = !nextState;
+      });
     }
-  }, []);
+    connectionsRef.current.forEach(item => {
+      if (item.dataConn.open) {
+        item.dataConn.send({ type: "state-update", name: myNameRef.current, micMuted, camDisabled: nextState });
+      }
+    });
+  }, [micMuted, camDisabled]);
 
   const revertToCamera = useCallback(() => {
-    if (screenCallRef.current) {
-      screenCallRef.current.close();
-      screenCallRef.current = null;
-    }
+    connectionsRef.current.forEach(item => {
+      if (item.screenCall) {
+        item.screenCall.close();
+        item.screenCall = undefined;
+      }
+    });
     if (localScreenStreamRef.current) {
       localScreenStreamRef.current.getTracks().forEach(t => t.stop());
     }
@@ -551,19 +577,21 @@ export function usePeerConnection() {
     setScreenSharing(false);
     addSystemMsg("Screen share ended.");
 
-    if (dataConnRef.current && dataConnRef.current.open) {
-      dataConnRef.current.send({ type: "screen-share-state", name: myName, active: false });
-    }
-  }, [myName, addSystemMsg]);
+    connectionsRef.current.forEach(item => {
+      if (item.dataConn.open) {
+        item.dataConn.send({ type: "screen-share-state", name: myNameRef.current, active: false });
+      }
+    });
+  }, [addSystemMsg]);
 
   const toggleScreenShare = useCallback(async () => {
     if (!screenSharing) {
       try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
           video: {
-            width: { ideal: 1920, max: 3840 },
-            height: { ideal: 1080, max: 2160 },
-            frameRate: { ideal: 60, max: 60 }
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+            frameRate: { ideal: 30, max: 30 }
           },
           audio: {
             echoCancellation: false,
@@ -573,20 +601,23 @@ export function usePeerConnection() {
         });
         setLocalScreenStream(screenStream);
         setScreenSharing(true);
-        addSystemMsg("Screen share started. Tip: If windows (like Brave) are missing, make sure they are NOT minimized.");
+        addSystemMsg("Screen share started.");
 
-        if (peerRef.current && dataConnRef.current) {
-          const friendPeerId = dataConnRef.current.peer;
-          const call = peerRef.current.call(friendPeerId, screenStream, {
-            metadata: { type: "screen-share" }
+        if (peerRef.current) {
+          connectionsRef.current.forEach((item, friendId) => {
+            const call = peerRef.current!.call(friendId, screenStream, {
+              metadata: { type: "screen-share" }
+            });
+            item.screenCall = call;
+            setTimeout(() => boostBitrate(call, true), 1000);
           });
-          wireScreenCall(call);
-          setTimeout(() => boostBitrate(call, true), 1000);
         }
 
-        if (dataConnRef.current && dataConnRef.current.open) {
-          dataConnRef.current.send({ type: "screen-share-state", name: myName, active: true });
-        }
+        connectionsRef.current.forEach(item => {
+          if (item.dataConn.open) {
+            item.dataConn.send({ type: "screen-share-state", name: myNameRef.current, active: true });
+          }
+        });
 
         const screenTrack = screenStream.getVideoTracks()[0];
         screenTrack.onended = () => {
@@ -598,7 +629,12 @@ export function usePeerConnection() {
     } else {
       revertToCamera();
     }
-  }, [screenSharing, wireScreenCall, revertToCamera, addSystemMsg, myName]);
+  }, [screenSharing, revertToCamera, addSystemMsg, boostBitrate]);
+
+  // Derived properties for backwards compatibility
+  const remoteScreenSharing = participants.some(p => p.screenSharing);
+  const remoteScreenStream = participants.find(p => p.screenSharing)?.screenStream || null;
+  const friendName = participants.map(p => p.name).join(", ") || "Friend";
 
   return {
     myName,
@@ -609,13 +645,13 @@ export function usePeerConnection() {
     connectionStatus,
     errorMsg,
     localStream,
-    remoteStream,
     localScreenStream,
-    remoteScreenStream,
+    participants,
     micMuted,
     camDisabled,
     screenSharing,
     remoteScreenSharing,
+    remoteScreenStream,
     chatMessages,
     activeCelebration,
     timerSeconds,
