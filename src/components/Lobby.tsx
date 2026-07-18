@@ -120,7 +120,7 @@ export const Lobby: React.FC<LobbyProps> = ({
         </div>
 
         {/* Tab Selectors */}
-        <div className="tabs flex bg-navy-950/85 p-1 rounded-xl border border-navy-805/80 select-none mt-6">
+        <div className="tabs flex bg-navy-950 p-1 rounded-xl border border-navy-800 select-none mt-6">
           <button
             onClick={() => setActiveTab('create')}
             disabled={isLoading}
@@ -164,7 +164,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                     if (validationError) setValidationError('');
                   }}
                   disabled={isLoading}
-                  className="w-full bg-navy-950/80 border border-navy-700/80 rounded-xl py-3 px-4 text-white text-sm outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition duration-150 placeholder-dim/40"
+                  className="w-full bg-navy-950 border border-navy-700 rounded-xl py-3 px-4 text-white text-sm outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition duration-150 placeholder-dim/40"
                 />
               </div>
 
@@ -186,7 +186,7 @@ export const Lobby: React.FC<LobbyProps> = ({
               </button>
 
               {roomCode && (
-                <div className="share-code mt-1 border border-dashed border-gold/40 rounded-2xl p-4 text-center bg-navy-950/70 backdrop-blur-md animate-scale-in">
+                <div className="share-code mt-1 border border-dashed border-gold/40 rounded-2xl p-4 text-center bg-navy-950 backdrop-blur-md animate-scale-in">
                   <div className="text-[9px] uppercase tracking-widest text-dim font-bold mb-1">Room Code</div>
                   <div className="code font-teko text-[44px] tracking-[0.25em] text-gold-bright leading-none select-all">
                     {roomCode}
@@ -230,7 +230,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                     if (validationError) setValidationError('');
                   }}
                   disabled={isLoading}
-                  className="w-full bg-navy-950/80 border border-navy-700/80 rounded-xl py-3 px-4 text-white text-sm outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition duration-150 placeholder-dim/40"
+                  className="w-full bg-navy-950 border border-navy-700 rounded-xl py-3 px-4 text-white text-sm outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition duration-150 placeholder-dim/40"
                 />
               </div>
 
@@ -246,7 +246,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                   value={codeInput}
                   onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
                   disabled={isLoading}
-                  className="w-full bg-navy-950/80 border border-navy-700/80 rounded-xl py-2 px-4 text-white text-3xl font-teko tracking-[0.25em] uppercase outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition duration-150 text-center placeholder-dim/20"
+                  className="w-full bg-navy-950 border border-navy-700 rounded-xl py-2 px-4 text-white text-3xl font-teko tracking-[0.25em] uppercase outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition duration-150 text-center placeholder-dim/20"
                 />
               </div>
               
