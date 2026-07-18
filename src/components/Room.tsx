@@ -108,38 +108,38 @@ export const Room: React.FC<RoomProps> = ({
   return (
     <div id="room" className="flex-1 flex flex-col relative z-10 min-h-0 h-screen select-none">
       {/* Top Navigation Bar */}
-      <div className="topbar flex items-center justify-between p-3 px-5 bg-navy-900 border-b border-navy-700 shrink-0">
-        <div className="topbar-left flex items-center gap-3.5">
-          <div className="brand font-teko text-[24px] text-gold tracking-[0.04em]">
+      <div className="topbar flex items-center justify-between p-2 px-3 sm:p-3 sm:px-5 bg-navy-900 border-b border-navy-700 shrink-0 select-none">
+        <div className="topbar-left flex items-center gap-2 sm:gap-3.5 min-w-0">
+          <div className="brand hidden sm:block font-teko text-[24px] text-gold tracking-[0.04em]">
             MATCHDAY
           </div>
-          <div className="conn-pill flex items-center gap-2 bg-navy-950 border border-navy-700 rounded-full py-1 px-3 text-xs text-dim font-semibold select-none">
+          <div className="conn-pill flex items-center gap-1.5 bg-navy-950 border border-navy-700 rounded-full py-0.5 px-1.5 sm:py-1 sm:px-3 text-[10px] sm:text-xs text-dim font-semibold">
             <span
-              className={`conn-dot w-2 h-2 rounded-full ${
+              className={`conn-dot w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${
                 isConnected
                   ? 'bg-pitch-bright shadow-[0_0_6px_var(--pitch-bright)] animate-pulse-slow'
                   : 'bg-red'
               }`}
             />
-            <span>{getConnectionText()}</span>
+            <span className="hidden xs:inline sm:inline">{getConnectionText()}</span>
           </div>
-          <div className="timer font-teko text-[20px] text-white tracking-[0.05em] select-none">
+          <div className="timer font-teko text-[18px] sm:text-[20px] text-white tracking-[0.05em] px-1 bg-navy-950 rounded border border-navy-800">
             {formatTimer(timerSeconds)}
           </div>
           <button
             onClick={copyInviteLink}
             title="Copy invite link"
-            className="flex items-center gap-1.5 bg-navy-950 hover:bg-navy-800 border border-navy-700 text-xs text-gold font-semibold py-1 px-2.5 rounded-full cursor-pointer select-none transition duration-150 active:scale-95"
+            className="flex items-center gap-1.5 bg-navy-950 hover:bg-navy-800 border border-navy-700 text-[10px] sm:text-xs text-gold font-semibold py-0.5 px-2 sm:py-1 sm:px-2.5 rounded-full cursor-pointer transition duration-150 active:scale-95 shrink-0"
           >
             {copied ? (
               <>
-                <Check className="w-3.5 h-3.5 text-pitch-bright" />
-                <span className="text-pitch-bright">Link Copied!</span>
+                <Check className="w-3 h-3 text-pitch-bright" />
+                <span className="text-pitch-bright">Copied!</span>
               </>
             ) : (
               <>
-                <Copy className="w-3.5 h-3.5" />
-                <span>Code: {roomCode}</span>
+                <Copy className="w-3 h-3" />
+                <span><span className="hidden sm:inline">Code: </span>{roomCode}</span>
               </>
             )}
           </button>
@@ -300,9 +300,9 @@ export const Room: React.FC<RoomProps> = ({
             : 'w-full md:w-[320px] flex-col'
         }`}>
           {hasPrimary && (
-            <div className="w-full md:w-[180px] shrink-0 border-b md:border-b-0 md:border-r border-navy-700 p-3 flex flex-col gap-3 bg-navy-950 select-none overflow-y-auto">
+            <div className="w-full md:w-[180px] shrink-0 border-b md:border-b-0 md:border-r border-navy-700 p-3 flex flex-row md:flex-col gap-3 bg-navy-950 select-none overflow-x-auto md:overflow-y-auto">
               {/* Friend's Camera */}
-              <div className="flex flex-col gap-1">
+              <div className="flex-1 md:flex-initial flex flex-col gap-1 min-w-[120px] md:min-w-0">
                 <div className="text-[9px] uppercase text-dim tracking-[0.12em] font-bold">
                   {friendName}
                 </div>
@@ -318,7 +318,7 @@ export const Room: React.FC<RoomProps> = ({
               </div>
 
               {/* Your Camera */}
-              <div className="flex flex-col gap-1">
+              <div className="flex-1 md:flex-initial flex flex-col gap-1 min-w-[120px] md:min-w-0">
                 <div className="text-[9px] uppercase text-dim tracking-[0.12em] font-bold">
                   {myName} (you)
                 </div>
