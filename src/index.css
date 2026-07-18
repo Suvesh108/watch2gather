@@ -3,17 +3,19 @@
 @tailwind utilities;
 
 :root {
-  --google-bg: #202124;
-  --google-bg-elevated: #2d2d30;
-  --google-border: #3c4043;
-  --google-blue: #8ab4f8;
-  --google-blue-hover: #aecbfa;
-  --google-red: #ea4335;
-  --google-red-hover: #f28b82;
-  --google-green: #81c995;
-  --google-grey: #5f6368;
-  --google-text: #e8eaed;
-  --google-text-secondary: #9aa0a6;
+  --navy-950: #040810;
+  --navy-900: #090f1e;
+  --navy-800: #101931;
+  --navy-700: #1b2746;
+  --gold: #d4af37;
+  --gold-bright: #ffd700;
+  --gold-dark: #aa771c;
+  --pitch: #2a8a3c;
+  --pitch-bright: #4cd15f;
+  --white: #fafafa;
+  --dim: #7f8fae;
+  --red: #e63946;
+  --red-hover: #d62230;
 }
 
 * {
@@ -24,18 +26,37 @@
 
 html, body {
   height: 100%;
-  background-color: var(--google-bg);
+  background-color: var(--navy-950);
 }
 
 body {
-  background-color: var(--google-bg);
-  color: var(--google-text);
-  font-family: 'Google Sans', 'Roboto', 'Inter', system-ui, -apple-system, sans-serif;
+  background:
+    radial-gradient(ellipse 1400px 700px at 50% -15%, rgba(42, 138, 60, 0.16), transparent 70%),
+    radial-gradient(ellipse 800px 500px at 50% 110%, rgba(212, 175, 55, 0.05), transparent 70%),
+    var(--navy-950);
+  color: var(--white);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Stadium subtle floodlight beams background effect */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    120deg,
+    rgba(255, 255, 255, 0.01) 0px,
+    rgba(255, 255, 255, 0.01) 1px,
+    transparent 1px,
+    transparent 120px
+  );
+  pointer-events: none;
+  z-index: 0;
 }
 
 #root {
@@ -45,20 +66,20 @@ body {
   position: relative;
 }
 
-/* Material thin scrollbar */
+/* Custom thin scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--google-bg);
+  background: var(--navy-950);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--google-border);
+  background: var(--navy-800);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--google-grey);
+  background: var(--gold);
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -88,10 +109,10 @@ body {
   animation: mdScaleIn 0.2s cubic-bezier(0, 0, 0.2, 1) forwards;
 }
 
-/* Material 3 Card style */
+/* Material card styled in Navy colors */
 .m3-card {
-  background-color: var(--google-bg-elevated);
-  border: 1px solid var(--google-border);
+  background-color: var(--navy-900);
+  border: 1px solid var(--navy-800);
 }
 
 /* Webkit autofill overrides */
@@ -99,7 +120,7 @@ input:-webkit-autofill,
 input:-webkit-autofill:hover, 
 input:-webkit-autofill:focus, 
 input:-webkit-autofill:active {
-  -webkit-text-fill-color: var(--google-text) !important;
-  -webkit-box-shadow: 0 0 0px 1000px var(--google-bg-elevated) inset !important;
+  -webkit-text-fill-color: var(--white) !important;
+  -webkit-box-shadow: 0 0 0px 1000px var(--navy-900) inset !important;
   transition: background-color 5000s ease-in-out 0s;
 }

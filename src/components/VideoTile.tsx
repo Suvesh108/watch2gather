@@ -50,7 +50,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
   };
 
   return (
-    <div className="relative bg-[#171717] rounded-2xl overflow-hidden border border-[#3c4043] flex items-center justify-center w-full h-full group shadow-md transition duration-200">
+    <div className="relative bg-navy-950 rounded-2xl overflow-hidden border border-navy-800/80 flex items-center justify-center w-full h-full group shadow-md transition duration-200 hover:border-navy-700/80">
       
       {stream ? (
         <video
@@ -66,13 +66,13 @@ export const VideoTile: React.FC<VideoTileProps> = ({
         <div className="w-full h-full flex flex-col items-center justify-center p-5 relative select-none">
           {typeof placeholder === 'string' ? (
             <div className="flex flex-col items-center gap-3.5 text-center">
-              {/* Clean Google-Meet circular avatar */}
-              <div className="w-16 h-16 rounded-full bg-[#3c4043] flex items-center justify-center text-white text-xl font-medium shadow">
+              {/* Google-Meet style initials avatar with brand gold look */}
+              <div className="w-16 h-16 rounded-full bg-navy-900 border border-navy-800 flex items-center justify-center text-gold text-xl font-bold shadow-inner">
                 {getInitials(label)}
               </div>
               <div className="flex flex-col gap-0.5">
-                <span className="text-white text-xs font-semibold">{label}</span>
-                <span className="text-[#9aa0a6] text-[10px] uppercase tracking-wider">{placeholder}</span>
+                <span className="text-white text-xs font-bold">{label}</span>
+                <span className="text-dim text-[10px] uppercase tracking-wider font-semibold">{placeholder}</span>
               </div>
             </div>
           ) : (
@@ -81,26 +81,26 @@ export const VideoTile: React.FC<VideoTileProps> = ({
         </div>
       )}
 
-      {/* Clean label overlay (Google Meet style) */}
+      {/* Clean label tag with stadium styling */}
       {stream && (
-        <div className="absolute left-3 bottom-3 z-20 bg-[#202124]/85 border border-[#3c4043]/30 py-1 px-3 rounded-lg text-xs font-medium text-white shadow-md select-none flex items-center gap-2">
-          {isLocal && <span className="w-1.5 h-1.5 rounded-full bg-[#81c995]" />}
+        <div className="absolute left-3 bottom-3 z-20 bg-navy-950/85 border border-navy-800/40 py-1 px-3 rounded-lg text-xs font-semibold text-white shadow-md select-none flex items-center gap-2">
+          {isLocal && <span className="w-1.5 h-1.5 rounded-full bg-pitch-bright" />}
           {label}
         </div>
       )}
 
-      {/* Autoplay block recovery overlay */}
+      {/* Autoplay block recovery overlay in stadium palette */}
       {stream && isPaused && (
         <div 
           onClick={handlePlayClick}
-          className="absolute inset-0 bg-[#202124]/90 flex flex-col items-center justify-center gap-3.5 z-30 cursor-pointer select-none transition-all duration-200 animate-scale-in"
+          className="absolute inset-0 bg-navy-950/90 flex flex-col items-center justify-center gap-3.5 z-30 cursor-pointer select-none transition-all duration-200 animate-scale-in"
         >
-          <div className="bg-[#3c4043] border border-[#5f6368] rounded-full w-12 h-12 flex items-center justify-center shadow-lg transition duration-150 hover:bg-[#4e5256] active:scale-90">
-            <Play className="w-5 h-5 text-white fill-white ml-0.5" />
+          <div className="bg-navy-900 border border-navy-800 hover:border-gold rounded-full w-12 h-12 flex items-center justify-center shadow-lg transition duration-150 active:scale-90">
+            <Play className="w-5 h-5 text-gold fill-gold ml-0.5" />
           </div>
           <div className="flex flex-col items-center gap-0.5 text-center">
-            <span className="text-white text-xs font-medium">Autoplay blocked</span>
-            <span className="text-[#9aa0a6] text-[10px] uppercase tracking-wider">Click to play video stream</span>
+            <span className="text-white text-xs font-bold">Autoplay blocked</span>
+            <span className="text-dim text-[10px] uppercase tracking-wider font-semibold">Click to play video stream</span>
           </div>
         </div>
       )}
