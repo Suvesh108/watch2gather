@@ -50,49 +50,20 @@ export function usePeerConnection() {
     screenSharingRef.current = screenSharing;
   }, [screenSharing]);
 
-  // Audio Context refs for mixing screen share audio and microphone
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const screenSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const audioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
-  const originalMicTrackRef = useRef<MediaStreamTrack | null>(null);
-  const mixedTrackRef = useRef<MediaStreamTrack | null>(null);
+  const [localScreenStream, setLocalScreenStream] = useState<MediaStream | null>(null);
+  const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
+
+  const screenCallRef = useRef<MediaConnection | null>(null);
+  const localScreenStreamRef = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    localScreenStreamRef.current = localScreenStream;
+  }, [localScreenStream]);
 
   // Sync localStreamRef
   useEffect(() => {
     localStreamRef.current = localStream;
   }, [localStream]);
-
-  const stopAudioMixing = useCallback(() => {
-    if (originalMicTrackRef.current) {
-      if (mediaCallRef.current && mediaCallRef.current.peerConnection) {
-        const sender = mediaCallRef.current.peerConnection.getSenders().find(s => s.track && s.track.kind === "audio");
-        if (sender) {
-          sender.replaceTrack(originalMicTrackRef.current).catch(err => console.error("Restore audio track error:", err));
-        }
-      }
-    }
-    if (mixedTrackRef.current) {
-      mixedTrackRef.current.stop();
-      mixedTrackRef.current = null;
-    }
-    if (micSourceRef.current) {
-      micSourceRef.current.disconnect();
-      micSourceRef.current = null;
-    }
-    if (screenSourceRef.current) {
-      screenSourceRef.current.disconnect();
-      screenSourceRef.current = null;
-    }
-    if (audioDestinationRef.current) {
-      audioDestinationRef.current = null;
-    }
-    if (audioContextRef.current) {
-      audioContextRef.current.close().catch(() => {});
-      audioContextRef.current = null;
-    }
-    originalMicTrackRef.current = null;
-  }, []);
 
   // Clean up on component unmount
   useEffect(() => {
@@ -102,7 +73,6 @@ export function usePeerConnection() {
   }, []);
 
   const cleanup = useCallback(() => {
-    stopAudioMixing();
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
@@ -110,6 +80,10 @@ export function usePeerConnection() {
     if (mediaCallRef.current) {
       mediaCallRef.current.close();
       mediaCallRef.current = null;
+    }
+    if (screenCallRef.current) {
+      screenCallRef.current.close();
+      screenCallRef.current = null;
     }
     if (dataConnRef.current) {
       dataConnRef.current.close();
@@ -122,8 +96,13 @@ export function usePeerConnection() {
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
     }
+    if (localScreenStreamRef.current) {
+      localScreenStreamRef.current.getTracks().forEach(track => track.stop());
+    }
     setLocalStream(null);
     setRemoteStream(null);
+    setLocalScreenStream(null);
+    setRemoteScreenStream(null);
     setConnectionStatus('idle');
     setChatMessages([]);
     setTimerSeconds(0);
@@ -310,6 +289,23 @@ export function usePeerConnection() {
     });
   }, [myName, handleData, addSystemMsg]);
 
+  const wireScreenCall = useCallback((call: MediaConnection) => {
+    screenCallRef.current = call;
+
+    call.on("stream", (remoteStream) => {
+      setRemoteScreenStream(remoteStream);
+    });
+
+    call.on("close", () => {
+      setRemoteScreenStream(null);
+      screenCallRef.current = null;
+    });
+
+    call.on("error", (err) => {
+      console.error("Screen call error:", err);
+    });
+  }, []);
+
   const wireMediaCall = useCallback((call: MediaConnection) => {
     mediaCallRef.current = call;
 
@@ -360,8 +356,13 @@ export function usePeerConnection() {
       });
 
       newPeer.on("call", (call) => {
-        call.answer(stream);
-        wireMediaCall(call);
+        if (call.metadata && call.metadata.type === "screen-share") {
+          call.answer();
+          wireScreenCall(call);
+        } else {
+          call.answer(stream);
+          wireMediaCall(call);
+        }
       });
 
       newPeer.on("error", (err) => {
@@ -409,6 +410,16 @@ export function usePeerConnection() {
 
         const call = newPeer.call(targetId, stream);
         wireMediaCall(call);
+      });
+
+      newPeer.on("call", (call) => {
+        if (call.metadata && call.metadata.type === "screen-share") {
+          call.answer();
+          wireScreenCall(call);
+        } else {
+          call.answer(stream);
+          wireMediaCall(call);
+        }
       });
 
       newPeer.on("error", (err) => {
@@ -499,24 +510,22 @@ export function usePeerConnection() {
     }
   }, []);
 
-  const replaceVideoTrack = useCallback((newTrack: MediaStreamTrack) => {
-    if (mediaCallRef.current && mediaCallRef.current.peerConnection) {
-      const sender = mediaCallRef.current.peerConnection.getSenders().find(s => s.track && s.track.kind === "video");
-      if (sender) {
-        sender.replaceTrack(newTrack).catch(err => console.error("Replace video track error:", err));
-      }
+  const revertToCamera = useCallback(() => {
+    if (screenCallRef.current) {
+      screenCallRef.current.close();
+      screenCallRef.current = null;
     }
-    
-    const stream = localStreamRef.current;
-    if (stream) {
-      const oldTrack = stream.getVideoTracks()[0];
-      if (oldTrack) {
-        stream.removeTrack(oldTrack);
-        oldTrack.stop();
-      }
-      stream.addTrack(newTrack);
+    if (localScreenStreamRef.current) {
+      localScreenStreamRef.current.getTracks().forEach(t => t.stop());
     }
-  }, []);
+    setLocalScreenStream(null);
+    setScreenSharing(false);
+    addSystemMsg("Screen share ended.");
+
+    if (dataConnRef.current && dataConnRef.current.open) {
+      dataConnRef.current.send({ type: "screen-share-state", name: myName, active: false });
+    }
+  }, [myName, addSystemMsg]);
 
   const toggleScreenShare = useCallback(async () => {
     if (!screenSharing) {
@@ -529,65 +538,23 @@ export function usePeerConnection() {
             autoGainControl: false
           }
         });
-        const screenTrack = screenStream.getVideoTracks()[0];
-        const screenAudioTrack = screenStream.getAudioTracks()[0];
-        
-        replaceVideoTrack(screenTrack);
+        setLocalScreenStream(screenStream);
         setScreenSharing(true);
         addSystemMsg("Screen share started. Tip: If windows (like Brave) are missing, make sure they are NOT minimized.");
-        
-        // Handle tab audio mixing if shared
-        const micTrack = localStreamRef.current?.getAudioTracks()[0];
-        if (screenAudioTrack && micTrack) {
-          try {
-            originalMicTrackRef.current = micTrack;
-            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-            const ctx = new AudioContextClass();
-            audioContextRef.current = ctx;
 
-            // Ensure AudioContext is running to bypass browser-specific suspended state rules
-            if (ctx.state === 'suspended') {
-              await ctx.resume();
-            }
-
-            // Route mic
-            const micStream = new MediaStream([micTrack]);
-            const micSource = ctx.createMediaStreamSource(micStream);
-            micSourceRef.current = micSource;
-
-            // Route screen audio
-            const screenAudioStream = new MediaStream([screenAudioTrack]);
-            const screenSource = ctx.createMediaStreamSource(screenAudioStream);
-            screenSourceRef.current = screenSource;
-
-            // Mix
-            const dest = ctx.createMediaStreamDestination();
-            audioDestinationRef.current = dest;
-            micSource.connect(dest);
-            screenSource.connect(dest);
-
-            // Replace sending audio track
-            const mixedTrack = dest.stream.getAudioTracks()[0];
-            mixedTrackRef.current = mixedTrack;
-
-            if (mediaCallRef.current && mediaCallRef.current.peerConnection) {
-              const sender = mediaCallRef.current.peerConnection.getSenders().find(s => s.track && s.track.kind === "audio");
-              if (sender) {
-                sender.replaceTrack(mixedTrack).catch(err => console.error("Replace audio track error:", err));
-              }
-            }
-            addSystemMsg("Screen share audio is being streamed to your friend 🔊");
-          } catch (mixErr) {
-            console.error("Failed mixing screen share audio", mixErr);
-          }
-        } else {
-          addSystemMsg("No screen share audio shared (microphone only) 🎤");
+        if (peerRef.current && dataConnRef.current) {
+          const friendPeerId = dataConnRef.current.peer;
+          const call = peerRef.current.call(friendPeerId, screenStream, {
+            metadata: { type: "screen-share" }
+          });
+          wireScreenCall(call);
         }
 
         if (dataConnRef.current && dataConnRef.current.open) {
           dataConnRef.current.send({ type: "screen-share-state", name: myName, active: true });
         }
 
+        const screenTrack = screenStream.getVideoTracks()[0];
         screenTrack.onended = () => {
           revertToCamera();
         };
@@ -597,25 +564,7 @@ export function usePeerConnection() {
     } else {
       revertToCamera();
     }
-  }, [screenSharing, replaceVideoTrack, addSystemMsg, myName]);
-
-  const revertToCamera = useCallback(async () => {
-    try {
-      const camStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
-      const camTrack = camStream.getVideoTracks()[0];
-      
-      stopAudioMixing();
-      replaceVideoTrack(camTrack);
-      setScreenSharing(false);
-      addSystemMsg("Screen share ended. Reverted to camera.");
-      
-      if (dataConnRef.current && dataConnRef.current.open) {
-        dataConnRef.current.send({ type: "screen-share-state", name: myName, active: false });
-      }
-    } catch (err) {
-      console.error("Revert to camera failed", err);
-    }
-  }, [replaceVideoTrack, addSystemMsg, stopAudioMixing, myName]);
+  }, [screenSharing, wireScreenCall, revertToCamera, addSystemMsg, myName]);
 
   return {
     myName,
@@ -627,6 +576,8 @@ export function usePeerConnection() {
     errorMsg,
     localStream,
     remoteStream,
+    localScreenStream,
+    remoteScreenStream,
     micMuted,
     camDisabled,
     screenSharing,

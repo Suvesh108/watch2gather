@@ -21,6 +21,8 @@ interface RoomProps {
   connectionStatus: 'idle' | 'setting-up' | 'waiting' | 'connecting' | 'connected' | 'disconnected' | 'error';
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
+  localScreenStream: MediaStream | null;
+  remoteScreenStream: MediaStream | null;
   micMuted: boolean;
   camDisabled: boolean;
   screenSharing: boolean;
@@ -43,6 +45,8 @@ export const Room: React.FC<RoomProps> = ({
   connectionStatus,
   localStream,
   remoteStream,
+  localScreenStream,
+  remoteScreenStream,
   micMuted,
   camDisabled,
   screenSharing,
@@ -198,7 +202,7 @@ export const Room: React.FC<RoomProps> = ({
               {/* Primary View (Full container width/height) */}
               <div className="w-full h-full absolute inset-0 z-10">
                 <VideoTile
-                  stream={isLocalPrimary ? localStream : remoteStream}
+                  stream={isLocalPrimary ? localScreenStream : remoteScreenStream}
                   label={isLocalPrimary ? `${myName} (you) [Shared Screen]` : `${friendName} [Shared Screen]`}
                   isLocal={isLocalPrimary}
                   muted={isLocalPrimary}
@@ -296,18 +300,37 @@ export const Room: React.FC<RoomProps> = ({
             : 'w-full md:w-[320px] flex-col'
         }`}>
           {hasPrimary && (
-            <div className="w-full md:w-[180px] shrink-0 border-b md:border-b-0 md:border-r border-navy-700 p-3.5 flex flex-col gap-2 bg-navy-950 select-none">
-              <div className="text-[10px] uppercase text-dim tracking-[0.12em] font-bold">
-                {isLocalPrimary ? friendName : `${myName} (you)`}
+            <div className="w-full md:w-[180px] shrink-0 border-b md:border-b-0 md:border-r border-navy-700 p-3 flex flex-col gap-3 bg-navy-950 select-none overflow-y-auto">
+              {/* Friend's Camera */}
+              <div className="flex flex-col gap-1">
+                <div className="text-[9px] uppercase text-dim tracking-[0.12em] font-bold">
+                  {friendName}
+                </div>
+                <div className="w-full aspect-[4/3] rounded-lg overflow-hidden border border-navy-700 bg-black shadow-lg">
+                  <VideoTile
+                    stream={remoteStream}
+                    label={friendName}
+                    isLocal={false}
+                    muted={false}
+                    placeholder="Friend camera off"
+                  />
+                </div>
               </div>
-              <div className="w-full aspect-[4/3] rounded-lg overflow-hidden border border-navy-700 bg-black shadow-lg">
-                <VideoTile
-                  stream={isLocalPrimary ? remoteStream : localStream}
-                  label={isLocalPrimary ? friendName : `${myName} (you)`}
-                  isLocal={!isLocalPrimary}
-                  muted={!isLocalPrimary}
-                  placeholder={isLocalPrimary ? "Camera off" : "No camera"}
-                />
+
+              {/* Your Camera */}
+              <div className="flex flex-col gap-1">
+                <div className="text-[9px] uppercase text-dim tracking-[0.12em] font-bold">
+                  {myName} (you)
+                </div>
+                <div className="w-full aspect-[4/3] rounded-lg overflow-hidden border border-navy-700 bg-black shadow-lg">
+                  <VideoTile
+                    stream={localStream}
+                    label={`${myName} (you)`}
+                    isLocal={true}
+                    muted={true}
+                    placeholder="Your camera off"
+                  />
+                </div>
               </div>
             </div>
           )}
