@@ -398,10 +398,6 @@ export function usePeerConnection() {
         if (peerRef.current && !connectionsRef.current.has(p.peerId)) {
           const conn = peerRef.current.connect(p.peerId, { reliable: true, serialization: "json" });
           wireDataConnection(conn, p.name, true);
-          if (localStreamRef.current) {
-            const call = peerRef.current.call(p.peerId, localStreamRef.current);
-            wireMediaCall(call);
-          }
         }
       });
     } else if (msg.type === "new-peer") {
@@ -476,6 +472,12 @@ export function usePeerConnection() {
       conn.send({ type: "hello", name: myNameRef.current });
       if (screenSharingRef.current) {
         conn.send({ type: "screen-share-state", name: myNameRef.current, active: true });
+      }
+
+      // Initiate uni-directional camera stream call to this peer
+      if (localStreamRef.current && peerRef.current) {
+        const call = peerRef.current.call(conn.peer, localStreamRef.current);
+        wireMediaCall(call);
       }
 
       if (isInitiator && peerRef.current) {
@@ -553,7 +555,7 @@ export function usePeerConnection() {
     setRoomCode(code);
 
     try {
-      const stream = await setupLocalMedia();
+      await setupLocalMedia();
       const newPeer = new Peer(ROOM_PREFIX + code + "-HOST", PEER_CONFIG);
       peerRef.current = newPeer;
 
@@ -569,7 +571,7 @@ export function usePeerConnection() {
           call.answer();
           wireScreenCall(call);
         } else {
-          call.answer(stream);
+          call.answer(); // Answer with no stream (uni-directional pattern)
           wireMediaCall(call);
         }
       });
@@ -595,7 +597,7 @@ export function usePeerConnection() {
     setErrorMsg("");
 
     try {
-      const stream = await setupLocalMedia();
+      await setupLocalMedia();
       const newPeer = new Peer(PEER_CONFIG);
       peerRef.current = newPeer;
 
@@ -603,8 +605,6 @@ export function usePeerConnection() {
         const hostId = ROOM_PREFIX + cleanCode + "-HOST";
         const conn = newPeer.connect(hostId, { reliable: true, serialization: "json" });
         wireDataConnection(conn, "Host", true);
-        const call = newPeer.call(hostId, stream);
-        wireMediaCall(call);
       });
 
       newPeer.on("connection", (conn) => { wireDataConnection(conn); });
@@ -614,7 +614,7 @@ export function usePeerConnection() {
           call.answer();
           wireScreenCall(call);
         } else {
-          call.answer(stream);
+          call.answer(); // Answer with no stream (uni-directional pattern)
           wireMediaCall(call);
         }
       });
