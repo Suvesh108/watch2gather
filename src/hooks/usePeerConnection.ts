@@ -33,6 +33,7 @@ export function usePeerConnection() {
   const [micMuted, setMicMuted] = useState(false);
   const [camDisabled, setCamDisabled] = useState(false);
   const [screenSharing, setScreenSharing] = useState(false);
+  const [remoteScreenSharing, setRemoteScreenSharing] = useState(false);
   
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [activeCelebration, setActiveCelebration] = useState<CelebrationEvent | null>(null);
@@ -85,6 +86,7 @@ export function usePeerConnection() {
     setMicMuted(false);
     setCamDisabled(false);
     setScreenSharing(false);
+    setRemoteScreenSharing(false);
   }, []);
 
   const addSystemMsg = useCallback((text: string) => {
@@ -193,8 +195,11 @@ export function usePeerConnection() {
       // Log the celebration in the system messages
       const label = msg.kind.toUpperCase();
       addSystemMsg(`${msg.name || "Friend"} hit ${label}!`);
+    } else if (msg.type === "screen-share-state") {
+      setRemoteScreenSharing(msg.active);
+      addSystemMsg(`${msg.active ? (msg.name || friendName || "Friend") + " started screen sharing." : (msg.name || friendName || "Friend") + " stopped screen sharing."}`);
     }
-  }, [addSystemMsg, addChatMsg, localTriggerCelebration, startTimer]);
+  }, [addSystemMsg, addChatMsg, localTriggerCelebration, startTimer, friendName]);
 
   const setupLocalMedia = useCallback(async () => {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -212,6 +217,9 @@ export function usePeerConnection() {
       setIsInRoom(true);
       setConnectionStatus('connected');
       conn.send({ type: "hello", name: myName });
+      if (screenSharing) {
+        conn.send({ type: "screen-share-state", active: true });
+      }
     });
 
     conn.on("data", handleData);
@@ -443,6 +451,10 @@ export function usePeerConnection() {
         replaceVideoTrack(screenTrack);
         setScreenSharing(true);
         addSystemMsg("Screen share started. Tip: If windows (like Brave) are missing, make sure they are NOT minimized.");
+        
+        if (dataConnRef.current && dataConnRef.current.open) {
+          dataConnRef.current.send({ type: "screen-share-state", name: myName, active: true });
+        }
 
         screenTrack.onended = () => {
           revertToCamera();
@@ -462,6 +474,10 @@ export function usePeerConnection() {
       replaceVideoTrack(camTrack);
       setScreenSharing(false);
       addSystemMsg("Screen share ended. Reverted to camera.");
+      
+      if (dataConnRef.current && dataConnRef.current.open) {
+        dataConnRef.current.send({ type: "screen-share-state", name: myName, active: false });
+      }
     } catch (err) {
       console.error("Revert to camera failed", err);
     }
@@ -480,6 +496,7 @@ export function usePeerConnection() {
     micMuted,
     camDisabled,
     screenSharing,
+    remoteScreenSharing,
     chatMessages,
     activeCelebration,
     timerSeconds,

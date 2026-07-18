@@ -24,6 +24,7 @@ interface RoomProps {
   micMuted: boolean;
   camDisabled: boolean;
   screenSharing: boolean;
+  remoteScreenSharing: boolean;
   chatMessages: ChatMessage[];
   activeCelebration: CelebrationEvent | null;
   timerSeconds: number;
@@ -45,6 +46,7 @@ export const Room: React.FC<RoomProps> = ({
   micMuted,
   camDisabled,
   screenSharing,
+  remoteScreenSharing,
   chatMessages,
   activeCelebration,
   timerSeconds,
@@ -56,6 +58,10 @@ export const Room: React.FC<RoomProps> = ({
   leaveRoom,
 }) => {
   const [copied, setCopied] = useState(false);
+
+  const isLocalPrimary = screenSharing && !remoteScreenSharing;
+  const isRemotePrimary = remoteScreenSharing && !screenSharing;
+  const hasPrimary = isLocalPrimary || isRemotePrimary;
 
   const copyInviteLink = () => {
     const inviteLink = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
@@ -187,45 +193,71 @@ export const Room: React.FC<RoomProps> = ({
       <div className="main-area flex-1 flex flex-col md:flex-row min-h-0">
         {/* Video feed column */}
         <div className="video-col flex-1 flex flex-col p-4 gap-3 min-w-0">
-          <div className="video-grid flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 min-h-0">
-            <VideoTile
-              stream={localStream}
-              label={`${myName} (you)`}
-              isLocal={true}
-              muted={true}
-              placeholder="Setting up local video…"
-            />
-            <VideoTile
-              stream={remoteStream}
-              label={friendName}
-              isLocal={false}
-              placeholder={
-                <div className="flex flex-col items-center gap-4 text-center p-4">
-                  <span className="text-dim text-sm leading-normal">Waiting for your friend to join…</span>
-                  <div className="bg-navy-950/80 border border-navy-700 rounded-xl p-4 w-full max-w-[280px]">
-                    <div className="text-[10px] uppercase text-dim tracking-[0.12em] mb-1 font-bold">Room Code</div>
-                    <div className="font-teko text-4xl tracking-[0.2em] text-gold-bright leading-none">{roomCode}</div>
+          {hasPrimary ? (
+            <div className="video-grid flex-1 relative min-h-[300px] w-full h-full bg-navy-950 rounded-[14px] overflow-hidden border border-navy-700">
+              {/* Primary View (Full container width/height) */}
+              <div className="w-full h-full absolute inset-0 z-10">
+                <VideoTile
+                  stream={isLocalPrimary ? localStream : remoteStream}
+                  label={isLocalPrimary ? `${myName} (you) [Shared Screen]` : `${friendName} [Shared Screen]`}
+                  isLocal={isLocalPrimary}
+                  muted={isLocalPrimary}
+                  placeholder={isLocalPrimary ? "Setting up screen share…" : "Waiting for screen share…"}
+                />
+              </div>
+
+              {/* Secondary View (Floating PIP Box) */}
+              <div className="absolute bottom-4 right-4 w-32 h-24 sm:w-48 sm:h-32 z-20 shadow-[0_12px_36px_-6px_rgba(0,0,0,0.8)] border border-navy-700/80 rounded-xl overflow-hidden bg-navy-900 transition-all duration-300">
+                <VideoTile
+                  stream={isLocalPrimary ? remoteStream : localStream}
+                  label={isLocalPrimary ? friendName : `${myName} (you)`}
+                  isLocal={!isLocalPrimary}
+                  muted={!isLocalPrimary}
+                  placeholder={isLocalPrimary ? "Camera off" : "No camera"}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="video-grid flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 min-h-0">
+              <VideoTile
+                stream={localStream}
+                label={`${myName} (you)`}
+                isLocal={true}
+                muted={true}
+                placeholder="Setting up local video…"
+              />
+              <VideoTile
+                stream={remoteStream}
+                label={friendName}
+                isLocal={false}
+                placeholder={
+                  <div className="flex flex-col items-center gap-4 text-center p-4">
+                    <span className="text-dim text-sm leading-normal">Waiting for your friend to join…</span>
+                    <div className="bg-navy-950/80 border border-navy-700 rounded-xl p-4 w-full max-w-[280px]">
+                      <div className="text-[10px] uppercase text-dim tracking-[0.12em] mb-1 font-bold">Room Code</div>
+                      <div className="font-teko text-4xl tracking-[0.2em] text-gold-bright leading-none">{roomCode}</div>
+                    </div>
+                    <button
+                      onClick={copyInviteLink}
+                      className="flex items-center gap-2 bg-navy-900 hover:bg-navy-800 border border-navy-700 text-white hover:text-gold hover:border-gold px-4 py-2.5 rounded-lg text-xs font-bold transition duration-150 active:scale-95 cursor-pointer"
+                    >
+                      {copied ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-pitch-bright" />
+                          <span className="text-pitch-bright">Link Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copy Invite Link</span>
+                        </>
+                      )}
+                    </button>
                   </div>
-                  <button
-                    onClick={copyInviteLink}
-                    className="flex items-center gap-2 bg-navy-900 hover:bg-navy-800 border border-navy-700 text-white hover:text-gold hover:border-gold px-4 py-2.5 rounded-lg text-xs font-bold transition duration-150 active:scale-95 cursor-pointer"
-                  >
-                    {copied ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-pitch-bright" />
-                        <span className="text-pitch-bright">Link Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>Copy Invite Link</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              }
-            />
-          </div>
+                }
+              />
+            </div>
+          )}
 
           {/* Celebration bar */}
           <div className="celebrate-bar flex gap-2 flex-wrap bg-navy-900 border border-navy-700 rounded-xl p-2.5 select-none shrink-0">
