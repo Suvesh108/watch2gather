@@ -68,26 +68,7 @@ const PEER_CONFIG = {
 const MAX_CAMERA_BITRATE  = 2_500_000; // 2.5 Mbps — crisp HD 720p camera for every user
 const MAX_SCREEN_BITRATE  = 5_000_000; // 5.0 Mbps — sharp 1080p screen share for every user
 
-// ─── Codec preference helper ─────────────────────────────────────────────────
-// Prefer VP9 > H264 > VP8 for best quality/bitrate across Chrome, Firefox, Safari iOS 16+
-function applyCodecPreferences(pc: RTCPeerConnection) {
-  try {
-    const codecPriority = ['video/vp9', 'video/h264', 'video/vp8'];
-    pc.getTransceivers().forEach(transceiver => {
-      if (transceiver.receiver?.track?.kind !== 'video') return;
-      const caps = RTCRtpSender.getCapabilities?.('video');
-      if (!caps) return;
-      const sorted = [...caps.codecs].sort((a, b) => {
-        const ia = codecPriority.findIndex(c => a.mimeType.toLowerCase().includes(c));
-        const ib = codecPriority.findIndex(c => b.mimeType.toLowerCase().includes(c));
-        const ra = ia === -1 ? 999 : ia;
-        const rb = ib === -1 ? 999 : ib;
-        return ra - rb;
-      });
-      try { transceiver.setCodecPreferences(sorted); } catch (_) {}
-    });
-  } catch (_) {}
-}
+
 
 // ─── Playout delay minimizer ────────────────────────────────────────────────
 // Browsers buffer 100-200ms by default to smooth jitter. Setting playoutDelayHint=0
@@ -249,7 +230,7 @@ export function usePeerConnection() {
     const pc = call.peerConnection;
     if (!pc) return;
 
-    applyCodecPreferences(pc);
+
 
     const tryApply = () => {
       const state = pc.iceConnectionState;
