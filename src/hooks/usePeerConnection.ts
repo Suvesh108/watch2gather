@@ -492,7 +492,11 @@ export function usePeerConnection() {
       try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
           video: { frameRate: 30 },
-          audio: true // Request screen share audio!
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false
+          }
         });
         const screenTrack = screenStream.getVideoTracks()[0];
         const screenAudioTrack = screenStream.getAudioTracks()[0];
@@ -509,6 +513,11 @@ export function usePeerConnection() {
             const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
             const ctx = new AudioContextClass();
             audioContextRef.current = ctx;
+
+            // Ensure AudioContext is running to bypass browser-specific suspended state rules
+            if (ctx.state === 'suspended') {
+              await ctx.resume();
+            }
 
             // Route mic
             const micStream = new MediaStream([micTrack]);
