@@ -202,6 +202,7 @@ export const Room: React.FC<RoomProps> = ({
               {/* Primary View (Full container width/height) */}
               <div className="w-full h-full absolute inset-0 z-10">
                 <VideoTile
+                  key="primary-view-tile"
                   stream={isLocalPrimary ? localScreenStream : remoteScreenStream}
                   label={isLocalPrimary ? `${myName} (you) [Shared Screen]` : `${friendName} [Shared Screen]`}
                   isLocal={isLocalPrimary}
@@ -213,6 +214,7 @@ export const Room: React.FC<RoomProps> = ({
           ) : (
             <div className="video-grid flex-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 min-h-0 overflow-y-auto">
               <VideoTile
+                key="local-cam-grid"
                 stream={localStream}
                 label={`${myName} (you)`}
                 isLocal={true}
@@ -221,6 +223,7 @@ export const Room: React.FC<RoomProps> = ({
               />
               {participants.length === 0 ? (
                 <VideoTile
+                  key="invite-tile-grid"
                   stream={null}
                   label="Friend"
                   isLocal={false}
@@ -321,6 +324,7 @@ export const Room: React.FC<RoomProps> = ({
                 </div>
                 <div className="w-full aspect-[4/3] rounded-lg overflow-hidden border border-navy-700 bg-black shadow-lg">
                   <VideoTile
+                    key="local-cam-sidebar"
                     stream={localStream}
                     label={`${myName} (you)`}
                     isLocal={true}
@@ -338,6 +342,7 @@ export const Room: React.FC<RoomProps> = ({
                   </div>
                   <div className="w-full aspect-[4/3] rounded-lg overflow-hidden border border-navy-700 bg-black shadow-lg">
                     <VideoTile
+                      key={`${p.peerId}-sidebar`}
                       stream={p.stream}
                       label={p.name}
                       isLocal={false}
