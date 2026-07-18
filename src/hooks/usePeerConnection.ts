@@ -63,20 +63,10 @@ const PEER_CONFIG = {
   },
 };
 
-// ─── Adaptive bitrate tiers for mesh topology ────────────────────────────────
-// As more peers join, each user's upload budget per connection must shrink
-function getAdaptiveCameraBitrate(peerCount: number, packetLossRate: number): number {
-  let base: number;
-  if (peerCount <= 2)       base = 1_250_000;  // 720p full
-  else if (peerCount <= 4)  base = 900_000;    // 720p light
-  else if (peerCount <= 8)  base = 600_000;    // 540p
-  else if (peerCount <= 12) base = 350_000;    // 360p
-  else                      base = 150_000;    // 240p survival
-
-  // Further reduce if packet loss > 5%
-  if (packetLossRate > 0.05) base = Math.floor(base * 0.6);
-  return base;
-}
+// ─── Maximum quality — no throttling regardless of user count ────────────────
+// User explicitly requested max quality at all times — data usage is not a concern
+const MAX_CAMERA_BITRATE  = 2_500_000; // 2.5 Mbps — crisp HD 720p camera for every user
+const MAX_SCREEN_BITRATE  = 5_000_000; // 5.0 Mbps — sharp 1080p screen share for every user
 
 // ─── Codec preference helper ─────────────────────────────────────────────────
 // Prefer VP9 > H264 > VP8 for best quality/bitrate across Chrome, Firefox, Safari iOS 16+
@@ -125,7 +115,7 @@ export function usePeerConnection() {
   const localStreamRef = useRef<MediaStream | null>(null);
   const localScreenStreamRef = useRef<MediaStream | null>(null);
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const adaptiveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const participantsRef = useRef<Participant[]>([]);
 
   const myNameRef = useRef("");
@@ -161,7 +151,7 @@ export function usePeerConnection() {
     }
 
     if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null; }
-    if (adaptiveIntervalRef.current) { clearInterval(adaptiveIntervalRef.current); adaptiveIntervalRef.current = null; }
+
 
     connectionsRef.current.forEach(item => {
       if (item.mediaCall) item.mediaCall.close();
@@ -200,12 +190,9 @@ export function usePeerConnection() {
     }]);
   }, []);
 
-  // ─── Apply full encoding parameter profile ──────────────────────────────────
-  const applyEncodingParams = useCallback((
-    pc: RTCPeerConnection,
-    isScreen: boolean,
-    overrideBitrate?: number
-  ) => {
+  // ─── Apply fixed MAX quality encoding parameters — no adaptive scaling ────────
+  // Every sender always gets the highest possible bitrate regardless of peer count
+  const applyEncodingParams = useCallback((pc: RTCPeerConnection, isScreen: boolean) => {
     pc.getSenders().forEach(async sender => {
       if (!sender.track) return;
       const params = sender.getParameters();
@@ -213,16 +200,15 @@ export function usePeerConnection() {
       const enc = params.encodings[0];
 
       if (sender.track.kind === 'video') {
-        const peerCount = participantsRef.current.length + 1;
         if (isScreen) {
-          enc.maxBitrate = overrideBitrate ?? 4_000_000;  // 4 Mbps – screen clarity
+          enc.maxBitrate = MAX_SCREEN_BITRATE;  // 5 Mbps — full sharp 1080p screen
           enc.maxFramerate = 30;
           enc.scaleResolutionDownBy = 1.0;
           enc.priority = 'high';
           enc.networkPriority = 'high';
-          (params as any).degradationPreference = 'maintain-resolution'; // keep sharpness for text
+          (params as any).degradationPreference = 'maintain-resolution'; // keep text sharp
         } else {
-          enc.maxBitrate = overrideBitrate ?? getAdaptiveCameraBitrate(peerCount, 0);
+          enc.maxBitrate = MAX_CAMERA_BITRATE;  // 2.5 Mbps — HD 720p camera always
           enc.maxFramerate = 30;
           enc.scaleResolutionDownBy = 1.0;
           enc.priority = 'high';
@@ -240,34 +226,7 @@ export function usePeerConnection() {
     });
   }, []);
 
-  // ─── Adaptive bitrate polling via getStats ───────────────────────────────────
-  // Poll every 5 seconds, auto-reduce per-connection bitrate based on peerCount + loss
-  const startAdaptiveBitrate = useCallback(() => {
-    if (adaptiveIntervalRef.current) return;
-    adaptiveIntervalRef.current = setInterval(async () => {
-      const peerCount = participantsRef.current.length + 1;
-      for (const [, item] of connectionsRef.current) {
-        if (!item.mediaCall) continue;
-        const pc = item.mediaCall.peerConnection;
-        if (!pc) continue;
 
-        try {
-          const stats = await pc.getStats();
-          let packetsLost = 0;
-          let totalPackets = 0;
-          stats.forEach((report: any) => {
-            if (report.type === 'inbound-rtp' && report.mediaType === 'video') {
-              packetsLost += report.packetsLost || 0;
-              totalPackets += (report.packetsReceived || 0) + (report.packetsLost || 0);
-            }
-          });
-          const lossRate = totalPackets > 0 ? packetsLost / totalPackets : 0;
-          const targetBitrate = getAdaptiveCameraBitrate(peerCount, lossRate);
-          applyEncodingParams(pc, false, targetBitrate);
-        } catch (_) {}
-      }
-    }, 5000);
-  }, [applyEncodingParams]);
 
   // ─── Wire ICE connection state → encoding params ────────────────────────────
   // ICE must reach 'connected'/'completed' before setParameters is valid
@@ -390,7 +349,6 @@ export function usePeerConnection() {
 
       addSystemMsg(`${msg.name || "A friend"} joined the watch party ⚽`);
       startTimer();
-      startAdaptiveBitrate();
 
       // Coordinate mesh topology if host
       if (isHostRef.current) {
@@ -443,7 +401,7 @@ export function usePeerConnection() {
       alert("The host has ended the watch party.");
       cleanup();
     }
-  }, [addSystemMsg, addChatMsg, localTriggerCelebration, startTimer, startAdaptiveBitrate, cleanup, wireMediaCall]);
+  }, [addSystemMsg, addChatMsg, localTriggerCelebration, startTimer, cleanup, wireMediaCall]);
 
   const wireDataConnection = useCallback((conn: DataConnection, initialName = "") => {
     if (!connectionsRef.current.has(conn.peer)) {
