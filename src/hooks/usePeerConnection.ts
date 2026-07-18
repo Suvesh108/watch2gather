@@ -2,6 +2,32 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Peer from 'peerjs';
 import type { DataConnection, MediaConnection } from 'peerjs';
 
+// ─── SDP Munging for Audio FEC & DTX ─────────────────────────────────────────
+const originalSetLocalDescription = RTCPeerConnection.prototype.setLocalDescription;
+RTCPeerConnection.prototype.setLocalDescription = function(description?: RTCLocalSessionDescriptionInit) {
+  if (description && description.type !== 'rollback' && description.sdp) {
+    let sdp = description.sdp;
+    const opusMatch = sdp.match(/a=rtpmap:(\d+) opus\/48000\/2/i);
+    if (opusMatch) {
+      const pt = opusMatch[1];
+      const fmtpRegex = new RegExp(`a=fmtp:${pt} (.*)`);
+      if (fmtpRegex.test(sdp)) {
+        sdp = sdp.replace(fmtpRegex, (match) => {
+          let newFmtp = match;
+          if (!newFmtp.includes('useinbandfec=1')) newFmtp += ';useinbandfec=1';
+          if (!newFmtp.includes('usedtx=1')) newFmtp += ';usedtx=1';
+          return newFmtp;
+        });
+      } else {
+        sdp = sdp.replace(new RegExp(`(a=rtpmap:${pt} opus\\/48000\\/2\\r?\\n)`), `$1a=fmtp:${pt} useinbandfec=1;usedtx=1\r\n`);
+      }
+    }
+    const modifiedDescription = { type: description.type, sdp };
+    return (originalSetLocalDescription as any).call(this, modifiedDescription);
+  }
+  return originalSetLocalDescription.apply(this, arguments as any);
+};
+
 export interface ChatMessage {
   id: string;
   sender: string;
@@ -226,7 +252,6 @@ export function usePeerConnection() {
         } else {
           enc.maxBitrate = MAX_CAMERA_BITRATE;  // 2.5 Mbps — HD 720p camera always
           enc.maxFramerate = 30;
-          enc.scaleResolutionDownBy = 1.0;
           enc.priority = 'high';
           enc.networkPriority = 'high';
           (params as any).degradationPreference = 'maintain-framerate'; // keep motion smooth
@@ -254,6 +279,11 @@ export function usePeerConnection() {
 
     const tryApply = () => {
       const state = pc.iceConnectionState;
+      if (state === 'failed' || state === 'disconnected') {
+        if (pc.localDescription?.type === 'offer' && typeof pc.restartIce === 'function') {
+          try { pc.restartIce(); } catch (e) {}
+        }
+      }
       if (state === 'connected' || state === 'completed') {
         applyEncodingParams(pc, isScreen);
         minimizePlayoutDelay(pc);
