@@ -80,6 +80,13 @@ export const Room: React.FC<RoomProps> = ({
     return `${mins}:${secs}`;
   };
 
+  const getGridColsClass = () => {
+    const totalTiles = 1 + (participants.length === 0 ? 1 : participants.length);
+    if (totalTiles === 1) return 'grid-cols-1 max-w-2xl mx-auto';
+    if (totalTiles === 2) return 'grid-cols-1 md:grid-cols-2';
+    return 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
+  };
+
   const handleLeave = () => {
     if (window.confirm("Leave the watch party?")) {
       leaveRoom();
@@ -154,7 +161,7 @@ export const Room: React.FC<RoomProps> = ({
               </div>
             </div>
           ) : (
-            <div className="video-grid flex-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 min-h-0 overflow-y-auto pr-1">
+            <div className={`video-grid flex-1 grid ${getGridColsClass()} gap-4 min-h-0 overflow-y-auto pr-1`}>
               <VideoTile
                 key="local-cam-grid"
                 stream={localStream}
@@ -308,11 +315,11 @@ export const Room: React.FC<RoomProps> = ({
         {/* Right side container (adds shadow depth separating video grid) */}
         <div className={`shrink-0 flex border-t md:border-t-0 md:border-l border-navy-800 bg-navy-950/65 shadow-[-10px_0_30px_rgba(0,0,0,0.35)] min-h-0 ${
           hasPrimary 
-            ? 'w-full md:w-[460px] flex-col md:flex-row' 
+            ? 'w-full md:w-[500px] flex-col md:flex-row' 
             : 'w-full md:w-[300px] flex-col'
         }`}>
           {hasPrimary && (
-            <div className="w-full md:w-[160px] shrink-0 border-b md:border-b-0 md:border-r border-navy-800/80 p-3 flex flex-row md:flex-col gap-3 bg-navy-950/40 select-none overflow-x-auto md:overflow-y-auto">
+            <div className="w-full md:w-[200px] shrink-0 border-b md:border-b-0 md:border-r border-navy-800/80 p-3 flex flex-row md:flex-col gap-3 bg-navy-950/40 select-none overflow-x-auto md:overflow-y-auto">
               
               {/* Your Camera */}
               <div className="flex-1 md:flex-initial flex flex-col gap-1 min-w-[100px] md:min-w-0">
