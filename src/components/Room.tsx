@@ -90,7 +90,7 @@ export const Room: React.FC<RoomProps> = ({
     <div id="room" className="flex-1 flex flex-col relative z-10 min-h-0 h-screen select-none animate-scale-in">
       
       {/* Top Status Bar (Minimal Meet Style with Stadium Colors & Shadow Depth) */}
-      <div className="topbar flex items-center justify-between p-3.5 px-4 sm:px-6 bg-navy-950/70 backdrop-blur-md border-b border-white/5 shrink-0 select-none shadow-[0_4px_20px_rgba(0,0,0,0.4)]">
+      <div className="topbar flex items-center justify-between p-3.5 px-4 sm:px-6 bg-navy-950/70 backdrop-blur-md border-b border-navy-800 shrink-0 select-none shadow-[0_4px_20px_rgba(0,0,0,0.4)]">
         
         {/* Left Side: Room title & timer */}
         <div className="topbar-left flex items-center gap-3.5 min-w-0">
@@ -306,7 +306,7 @@ export const Room: React.FC<RoomProps> = ({
         </div>
 
         {/* Right side container (adds shadow depth separating video grid) */}
-        <div className={`shrink-0 flex border-t md:border-t-0 md:border-l border-white/5 bg-navy-950/65 shadow-[-10px_0_30px_rgba(0,0,0,0.35)] min-h-0 ${
+        <div className={`shrink-0 flex border-t md:border-t-0 md:border-l border-navy-800 bg-navy-950/65 shadow-[-10px_0_30px_rgba(0,0,0,0.35)] min-h-0 ${
           hasPrimary 
             ? 'w-full md:w-[460px] flex-col md:flex-row' 
             : 'w-full md:w-[300px] flex-col'
