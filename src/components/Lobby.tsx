@@ -27,13 +27,31 @@ export const Lobby: React.FC<LobbyProps> = ({
       setCodeInput(roomParam.toUpperCase());
     }
   }, []);
+  const [validationError, setValidationError] = useState('');
 
   const handleCreate = async () => {
+    if (!username.trim()) {
+      setValidationError('Please enter your name first.');
+      const input = document.getElementById('nameInput');
+      if (input) input.focus();
+      return;
+    }
+    setValidationError('');
     await createRoom(username);
   };
 
   const handleJoin = async () => {
-    if (!codeInput) return;
+    if (!username.trim()) {
+      setValidationError('Please enter your name first.');
+      const input = document.getElementById('nameInput');
+      if (input) input.focus();
+      return;
+    }
+    if (!codeInput) {
+      setValidationError('Please enter a room code.');
+      return;
+    }
+    setValidationError('');
     await joinRoom(username, codeInput);
   };
 
@@ -43,6 +61,7 @@ export const Lobby: React.FC<LobbyProps> = ({
   const isWaiting = connectionStatus === 'waiting';
 
   const getStatusMsg = () => {
+    if (validationError) return { text: validationError, type: 'error' };
     if (errorMsg) return { text: errorMsg, type: 'error' };
     if (isSettingUp) return { text: 'Setting up your room…', type: 'info' };
     if (isConnecting) return { text: 'Connecting to room…', type: 'info' };
@@ -79,7 +98,10 @@ export const Lobby: React.FC<LobbyProps> = ({
             placeholder="e.g. Suvesh"
             maxLength={20}
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            onChange={(e) => {
+              setUsername(e.target.value);
+              if (validationError) setValidationError('');
+            }}
             disabled={isSettingUp || isConnecting || isWaiting}
             className="w-full bg-navy-950 border border-navy-700 rounded-lg py-3 px-3.5 text-white text-[15px] outline-none focus:border-gold transition-colors duration-150"
           />
