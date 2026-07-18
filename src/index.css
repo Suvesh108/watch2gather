@@ -189,3 +189,9 @@ input:-webkit-autofill:active {
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
 }
+
+.btn-gold-gradient {
+  background: linear-gradient(90deg, var(--gold-dark) 0%, var(--gold) 50%, var(--gold-bright) 100%) !important;
+  color: var(--navy-950) !important;
+}
+

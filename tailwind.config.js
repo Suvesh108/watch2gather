@@ -16,6 +16,7 @@ export default {
         gold: {
           DEFAULT: "var(--gold)",
           bright: "var(--gold-bright)",
+          dark: "var(--gold-dark)",
         },
         pitch: {
           DEFAULT: "var(--pitch)",

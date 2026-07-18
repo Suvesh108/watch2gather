@@ -88,9 +88,7 @@ export const Room: React.FC<RoomProps> = ({
   };
 
   const handleLeave = () => {
-    if (window.confirm("Leave the watch party?")) {
-      leaveRoom();
-    }
+    leaveRoom();
   };
 
   return (
@@ -124,7 +122,7 @@ export const Room: React.FC<RoomProps> = ({
           <button
             onClick={copyInviteLink}
             title="Copy Invite Link"
-            className="flex items-center gap-2 bg-gradient-to-r from-gold-dark via-gold to-gold-bright text-navy-950 font-extrabold py-1.5 px-4 rounded-full cursor-pointer transition-all duration-150 btn-bounce neon-border-hover border border-transparent shrink-0"
+            className="flex items-center gap-2 btn-gold-gradient font-extrabold py-1.5 px-4 rounded-full cursor-pointer transition-all duration-150 btn-bounce neon-border-hover border border-transparent shrink-0"
           >
             {copied ? (
               <>

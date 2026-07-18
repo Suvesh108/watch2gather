@@ -108,6 +108,14 @@ export function usePeerConnection() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [activeCelebration, setActiveCelebration] = useState<CelebrationEvent | null>(null);
   const [timerSeconds, setTimerSeconds] = useState(0);
+  const [modal, setModal] = useState<{
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+    onCancel?: () => void;
+  } | null>(null);
 
   const peerRef = useRef<Peer | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -289,12 +297,17 @@ export function usePeerConnection() {
     setParticipants(prev => prev.filter(p => p.peerId !== peerId));
 
     if (peerId.endsWith("-HOST")) {
-      alert("The host has ended the watch party.");
       cleanup();
+      setModal({
+        title: "Watch Party Ended",
+        message: "The host has ended the watch party. Thanks for joining!",
+        confirmText: "Back to Lobby",
+        onConfirm: () => setModal(null)
+      });
     } else {
       addSystemMsg(`${info?.name || "A participant"} left the watch party.`);
     }
-  }, [cleanup, addSystemMsg]);
+  }, [cleanup, addSystemMsg, setModal]);
 
   const wireMediaCall = useCallback((call: MediaConnection) => {
     const peerId = call.peer;
@@ -437,10 +450,15 @@ export function usePeerConnection() {
       setParticipants(prev => prev.map(p => p.peerId === peerId
         ? { ...p, micMuted: msg.micMuted, camDisabled: msg.camDisabled } : p));
     } else if (msg.type === "host-ended") {
-      alert("The host has ended the watch party.");
       cleanup();
+      setModal({
+        title: "Watch Party Ended",
+        message: "The host has ended the watch party. Thanks for joining!",
+        confirmText: "Back to Lobby",
+        onConfirm: () => setModal(null)
+      });
     }
-  }, [addSystemMsg, addChatMsg, localTriggerCelebration, startTimer, cleanup, wireMediaCall]);
+  }, [addSystemMsg, addChatMsg, localTriggerCelebration, startTimer, cleanup, wireMediaCall, setModal]);
 
   // ─── Helper: route low-priority messages through unreliable channel ────────────
   // Falls back to reliable dataConn if rtDataConn not yet open
@@ -747,6 +765,8 @@ export function usePeerConnection() {
     } else {
       revertToCamera();
     }
+  }, [screenSharing, revertToCamera, addSystemMsg, wireIceOptimizations]);
+
   // ─── Heartbeat Keepalive Interval ──────────────────────────────────────────
   useEffect(() => {
     const interval = setInterval(() => {
@@ -782,8 +802,6 @@ export function usePeerConnection() {
     return () => clearInterval(interval);
   }, []);
 
-  }, [screenSharing, revertToCamera, addSystemMsg, wireIceOptimizations]);
-
   return {
     myName,
     friendName: participants.map(p => p.name).join(", ") || "Friend",
@@ -810,6 +828,21 @@ export function usePeerConnection() {
     toggleMic,
     toggleCam,
     toggleScreenShare,
-    leaveRoom: cleanup,
+    modal,
+    leaveRoom: () => {
+      setModal({
+        title: "Leave Watch Party?",
+        message: isHostRef.current
+          ? "Are you sure you want to end the watch party? This will disconnect all participants."
+          : "Are you sure you want to leave the watch party?",
+        confirmText: isHostRef.current ? "End Party" : "Leave Party",
+        cancelText: "Cancel",
+        onConfirm: () => {
+          cleanup();
+          setModal(null);
+        },
+        onCancel: () => setModal(null)
+      });
+    },
   };
 }
