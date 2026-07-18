@@ -97,8 +97,11 @@ body {
 
 /* Material card styled in Navy colors */
 .m3-card {
-  background-color: var(--navy-900);
-  border: 1px solid var(--navy-800);
+  background: rgba(9, 15, 30, 0.65);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 /* Webkit autofill overrides */
@@ -143,8 +146,46 @@ input:-webkit-autofill:active {
 }
 
 .timer-scoreboard {
-  background: rgba(4, 8, 16, 0.85);
-  border: 1px solid rgba(212, 175, 55, 0.3);
-  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.8), 0 0 8px rgba(212, 175, 55, 0.1);
+  background: rgba(4, 8, 16, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(212, 175, 55, 0.5);
+  box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.9), 0 0 15px rgba(212, 175, 55, 0.4);
+  position: relative;
+  overflow: hidden;
 }
 
+.timer-scoreboard::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  box-shadow: inset 0 0 20px rgba(212, 175, 55, 0.2);
+  pointer-events: none;
+}
+
+/* Micro-interaction utilities */
+.btn-bounce {
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.btn-bounce:hover {
+  transform: translateY(-3px) scale(1.05);
+}
+.btn-bounce:active {
+  transform: translateY(1px) scale(0.95);
+}
+
+.neon-border-hover {
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.neon-border-hover:hover {
+  border-color: var(--gold-bright);
+  box-shadow: 0 0 15px rgba(212, 175, 55, 0.4), inset 0 0 10px rgba(212, 175, 55, 0.2);
+}
+
+.glass-panel {
+  background: rgba(9, 15, 30, 0.55);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+}

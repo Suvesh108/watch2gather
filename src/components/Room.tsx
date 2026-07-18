@@ -117,7 +117,7 @@ export const Room: React.FC<RoomProps> = ({
           <button
             onClick={copyInviteLink}
             title="Copy Invite Link"
-            className="flex items-center gap-2 bg-gradient-to-r from-gold-dark via-gold to-gold-bright text-navy-950 font-extrabold py-1.5 px-4 rounded-full cursor-pointer transition-all duration-150 hover:shadow-[0_0_15px_rgba(212,175,55,0.45)] hover:scale-[1.02] active:scale-95 shrink-0"
+            className="flex items-center gap-2 bg-gradient-to-r from-gold-dark via-gold to-gold-bright text-navy-950 font-extrabold py-1.5 px-4 rounded-full cursor-pointer transition-all duration-150 btn-bounce neon-border-hover border border-transparent shrink-0"
           >
             {copied ? (
               <>
@@ -180,7 +180,7 @@ export const Room: React.FC<RoomProps> = ({
 
                   <button
                     onClick={copyInviteLink}
-                    className="flex items-center gap-2 bg-gold hover:bg-gold-bright text-navy-950 px-5 py-2.5 rounded-full text-xs font-bold transition duration-150 active:scale-95 cursor-pointer shadow-md hover:shadow-[0_0_12px_rgba(212,175,55,0.3)]"
+                    className="flex items-center gap-2 bg-gold hover:bg-gold-bright text-navy-950 px-5 py-2.5 rounded-full text-xs font-bold cursor-pointer shadow-md btn-bounce neon-border-hover border border-transparent"
                   >
                     {copied ? (
                       <>
@@ -215,42 +215,42 @@ export const Room: React.FC<RoomProps> = ({
             {/* Emojis Reactions */}
             <button
               onClick={() => triggerCelebration('goal')}
-              className="celebrate-btn glass-meet-btn w-10 h-10 rounded-full text-white cursor-pointer text-base flex items-center justify-center active:scale-90"
+              className="celebrate-btn glass-meet-btn w-10 h-10 rounded-full text-white cursor-pointer text-base flex items-center justify-center btn-bounce neon-border-hover border border-transparent"
               title="React Goal"
             >
               ⚽
             </button>
             <button
               onClick={() => triggerCelebration('save')}
-              className="celebrate-btn glass-meet-btn w-10 h-10 rounded-full text-white cursor-pointer text-base flex items-center justify-center active:scale-90"
+              className="celebrate-btn glass-meet-btn w-10 h-10 rounded-full text-white cursor-pointer text-base flex items-center justify-center btn-bounce neon-border-hover border border-transparent"
               title="React Save"
             >
               🧤
             </button>
             <button
               onClick={() => triggerCelebration('card')}
-              className="celebrate-btn glass-meet-btn w-10 h-10 rounded-full text-white cursor-pointer text-base flex items-center justify-center active:scale-90"
+              className="celebrate-btn glass-meet-btn w-10 h-10 rounded-full text-white cursor-pointer text-base flex items-center justify-center btn-bounce neon-border-hover border border-transparent"
               title="React Card"
             >
               🟨
             </button>
             <button
               onClick={() => triggerCelebration('fire')}
-              className="celebrate-btn glass-meet-btn w-10 h-10 rounded-full text-white cursor-pointer text-base flex items-center justify-center active:scale-90"
+              className="celebrate-btn glass-meet-btn w-10 h-10 rounded-full text-white cursor-pointer text-base flex items-center justify-center btn-bounce neon-border-hover border border-transparent"
               title="React Fire"
             >
               🔥
             </button>
             <button
               onClick={() => triggerCelebration('clap')}
-              className="celebrate-btn glass-meet-btn w-10 h-10 rounded-full text-white cursor-pointer text-base flex items-center justify-center active:scale-90"
+              className="celebrate-btn glass-meet-btn w-10 h-10 rounded-full text-white cursor-pointer text-base flex items-center justify-center btn-bounce neon-border-hover border border-transparent"
               title="React Clap"
             >
               👏
             </button>
             <button
               onClick={() => triggerCelebration('trophy')}
-              className="celebrate-btn glass-meet-btn w-10 h-10 rounded-full text-white cursor-pointer text-base flex items-center justify-center active:scale-90"
+              className="celebrate-btn glass-meet-btn w-10 h-10 rounded-full text-white cursor-pointer text-base flex items-center justify-center btn-bounce neon-border-hover border border-transparent"
               title="React Champs"
             >
               🏆
@@ -262,7 +262,7 @@ export const Room: React.FC<RoomProps> = ({
             <button
               onClick={toggleMic}
               title={micMuted ? "Unmute mic" : "Mute mic"}
-              className={`w-10 h-10 rounded-full border flex items-center justify-center cursor-pointer transition-all duration-150 hover:scale-108 active:scale-90 ${
+              className={`w-10 h-10 rounded-full border flex items-center justify-center cursor-pointer transition-all duration-150 btn-bounce neon-border-hover ${
                 micMuted
                   ? 'bg-red border-red glow-red text-white hover:bg-red/90'
                   : 'bg-navy-950 border border-navy-800/80 text-white hover:border-gold hover:text-gold shadow-md'
@@ -274,7 +274,7 @@ export const Room: React.FC<RoomProps> = ({
             <button
               onClick={toggleCam}
               title={camDisabled ? "Turn on camera" : "Turn off camera"}
-              className={`w-10 h-10 rounded-full border flex items-center justify-center cursor-pointer transition-all duration-150 hover:scale-108 active:scale-90 ${
+              className={`w-10 h-10 rounded-full border flex items-center justify-center cursor-pointer transition-all duration-150 btn-bounce neon-border-hover ${
                 camDisabled
                   ? 'bg-red border-red glow-red text-white hover:bg-red/90'
                   : 'bg-navy-950 border border-navy-800/80 text-white hover:border-gold hover:text-gold shadow-md'
@@ -286,7 +286,7 @@ export const Room: React.FC<RoomProps> = ({
             <button
               onClick={toggleScreenShare}
               title={screenSharing ? "Stop sharing screen" : "Share screen"}
-              className={`w-10 h-10 rounded-full border flex items-center justify-center cursor-pointer transition-all duration-150 hover:scale-108 active:scale-90 ${
+              className={`w-10 h-10 rounded-full border flex items-center justify-center cursor-pointer transition-all duration-150 btn-bounce neon-border-hover ${
                 screenSharing
                   ? 'bg-pitch border-pitch glow-green text-white hover:bg-pitch/90'
                   : 'bg-navy-950 border border-navy-800/80 text-white hover:border-gold hover:text-gold shadow-md'
@@ -298,7 +298,7 @@ export const Room: React.FC<RoomProps> = ({
             <button
               onClick={handleLeave}
               title="Leave room"
-              className="w-10 h-10 rounded-full bg-red border border-red glow-red hover:bg-red-hover text-white flex items-center justify-center cursor-pointer transition-all duration-150 hover:scale-108 active:scale-90"
+              className="w-10 h-10 rounded-full bg-red border border-red glow-red hover:bg-red-hover text-white flex items-center justify-center cursor-pointer transition-all duration-150 btn-bounce neon-border-hover"
             >
               <X className="w-4 h-4" />
             </button>

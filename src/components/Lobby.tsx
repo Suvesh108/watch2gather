@@ -162,7 +162,7 @@ export const Lobby: React.FC<LobbyProps> = ({
               <button
                 onClick={handleCreate}
                 disabled={isLoading}
-                className="w-full py-2.5 rounded-full bg-gold hover:bg-gold-bright text-navy-950 font-bold text-xs uppercase tracking-wider transition duration-150 active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed select-none flex items-center justify-center gap-2 shadow"
+                className="w-full py-2.5 rounded-full bg-gold hover:bg-gold-bright text-navy-950 font-bold text-xs uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed select-none flex items-center justify-center gap-2 shadow btn-bounce neon-border-hover border border-transparent"
               >
                 {isSettingUp ? (
                   <>
@@ -183,7 +183,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                   </p>
                   <button
                     onClick={handleCopyLink}
-                    className="mt-3 w-full flex items-center justify-center gap-2 text-xs text-navy-950 font-bold bg-gold hover:bg-gold-bright py-2 rounded-full transition duration-150 active:scale-95 cursor-pointer select-none"
+                    className="mt-3 w-full flex items-center justify-center gap-2 text-xs text-navy-950 font-bold bg-gold hover:bg-gold-bright py-2 rounded-full cursor-pointer select-none btn-bounce neon-border-hover border border-transparent"
                   >
                     {copied ? (
                       <>
@@ -240,7 +240,7 @@ export const Lobby: React.FC<LobbyProps> = ({
               <button
                 onClick={handleJoin}
                 disabled={!codeInput || isLoading}
-                className="w-full py-2.5 rounded-full bg-gold hover:bg-gold-bright text-navy-950 font-bold text-xs uppercase tracking-wider transition duration-150 active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed select-none flex items-center justify-center gap-2 shadow"
+                className="w-full py-2.5 rounded-full bg-gold hover:bg-gold-bright text-navy-950 font-bold text-xs uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed select-none flex items-center justify-center gap-2 shadow btn-bounce neon-border-hover border border-transparent"
               >
                 {isConnecting ? (
                   <>

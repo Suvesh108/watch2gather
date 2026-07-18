@@ -50,7 +50,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
   };
 
   return (
-    <div className="relative bg-navy-950 rounded-2xl overflow-hidden border border-navy-800/80 flex items-center justify-center w-full h-full group shadow-md transition duration-200 hover:border-navy-700/80">
+    <div className="relative glass-panel rounded-2xl overflow-hidden flex items-center justify-center w-full h-full group transition duration-200 hover:border-gold hover:shadow-[0_0_15px_rgba(212,175,55,0.3)]">
       
       {stream ? (
         <video
