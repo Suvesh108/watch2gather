@@ -33,7 +33,11 @@ const ROOM_PREFIX = "matchday-wc26-";
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun2.l.google.com:19302" },
+  { urls: "stun:stun3.l.google.com:19302" },
+  { urls: "stun:stun4.l.google.com:19302" },
   { urls: "stun:stun.cloudflare.com:3478" },
+  { urls: "stun:stun.nextcloud.com:443" },
   // Public free TURN relay as fallback for symmetric NAT / corporate firewalls
   {
     urls: "turn:openrelay.metered.ca:80",
@@ -362,6 +366,16 @@ export function usePeerConnection() {
   }, [wireIceOptimizations]);
 
   const handleData = useCallback((peerId: string, msg: any) => {
+    if (msg.type === "ping") {
+      try {
+        connectionsRef.current.get(peerId)?.dataConn.send({ type: "pong" });
+      } catch (_) {}
+      return;
+    }
+    if (msg.type === "pong") {
+      return;
+    }
+
     if (msg.type === "hello") {
       const info = connectionsRef.current.get(peerId);
       if (info) info.name = msg.name || "Friend";
@@ -559,6 +573,11 @@ export function usePeerConnection() {
       const newPeer = new Peer(ROOM_PREFIX + code + "-HOST", PEER_CONFIG);
       peerRef.current = newPeer;
 
+      newPeer.on("disconnected", () => {
+        console.warn("PeerJS signaling disconnected. Reconnecting host...");
+        newPeer.reconnect();
+      });
+
       newPeer.on("open", () => {
         setConnectionStatus('waiting');
         setIsInRoom(true);
@@ -600,6 +619,11 @@ export function usePeerConnection() {
       await setupLocalMedia();
       const newPeer = new Peer(PEER_CONFIG);
       peerRef.current = newPeer;
+
+      newPeer.on("disconnected", () => {
+        console.warn("PeerJS signaling disconnected. Reconnecting client...");
+        newPeer.reconnect();
+      });
 
       newPeer.on("open", () => {
         const hostId = ROOM_PREFIX + cleanCode + "-HOST";
@@ -723,6 +747,41 @@ export function usePeerConnection() {
     } else {
       revertToCamera();
     }
+  // ─── Heartbeat Keepalive Interval ──────────────────────────────────────────
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // 1. Keep WebRTC data connections warm (prevents NAT timeout)
+      connectionsRef.current.forEach((connItem) => {
+        if (connItem.dataConn && connItem.dataConn.open) {
+          try {
+            connItem.dataConn.send({ type: "ping" });
+          } catch (_) {}
+        }
+        if (connItem.rtDataConn && connItem.rtDataConn.open) {
+          try {
+            connItem.rtDataConn.send({ type: "ping" });
+          } catch (_) {}
+        }
+      });
+
+      // 2. Keep PeerJS Signaling WebSocket alive and auto-reconnect if dropped
+      if (peerRef.current) {
+        if (peerRef.current.disconnected) {
+          console.warn("PeerJS signaling disconnected. Reconnecting...");
+          try {
+            peerRef.current.reconnect();
+          } catch (_) {}
+        } else if ((peerRef.current as any).socket && !(peerRef.current as any).socket.closed) {
+          try {
+            (peerRef.current as any).socket.send({ type: "HEARTBEAT" });
+          } catch (_) {}
+        }
+      }
+    }, 15000); // 15 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
   }, [screenSharing, revertToCamera, addSystemMsg, wireIceOptimizations]);
 
   return {
