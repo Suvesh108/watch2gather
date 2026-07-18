@@ -89,6 +89,19 @@ function applyCodecPreferences(pc: RTCPeerConnection) {
   } catch (_) {}
 }
 
+// ─── Playout delay minimizer ────────────────────────────────────────────────
+// Browsers buffer 100-200ms by default to smooth jitter. Setting playoutDelayHint=0
+// tells Chrome to use the absolute minimum buffer — biggest single latency win available.
+function minimizePlayoutDelay(pc: RTCPeerConnection) {
+  try {
+    pc.getReceivers().forEach(receiver => {
+      if ('playoutDelayHint' in receiver) {
+        (receiver as any).playoutDelayHint = 0;
+      }
+    });
+  } catch (_) {}
+}
+
 export function usePeerConnection() {
   const [myName, setMyName] = useState("");
   const [roomCode, setRoomCode] = useState("");
@@ -131,9 +144,11 @@ export function usePeerConnection() {
   useEffect(() => { localStreamRef.current = localStream; }, [localStream]);
   useEffect(() => { participantsRef.current = participants; }, [participants]);
 
-  // Mesh connection registry
+  // Mesh connection registry — each peer has a reliable signaling channel
+  // and a separate unreliable channel for low-priority real-time messages
   const connectionsRef = useRef<Map<string, {
-    dataConn: DataConnection;
+    dataConn: DataConnection;       // reliable: true — for critical signaling
+    rtDataConn?: DataConnection;    // reliable: false, maxRetransmits:0 — for chat/state/celebrate
     mediaCall?: MediaConnection;
     screenCall?: MediaConnection;
     name: string;
@@ -244,8 +259,8 @@ export function usePeerConnection() {
     };
 
     pc.addEventListener('iceconnectionstatechange', tryApply);
-    // Delayed fallback: ICE may already be connected on fast local networks
-    setTimeout(() => applyEncodingParams(pc, isScreen), 1200);
+    // Delayed fallback: 500ms is sufficient for fast local networks
+    setTimeout(() => applyEncodingParams(pc, isScreen), 500);
   }, [applyEncodingParams]);
 
   const startTimer = useCallback(() => {
@@ -304,6 +319,8 @@ export function usePeerConnection() {
     call.on("stream", (remoteStream) => {
       setParticipants(prev => prev.map(p => p.peerId === peerId ? { ...p, stream: remoteStream } : p));
       wireIceOptimizations(call, false);
+      // Minimize jitter buffer — biggest single latency reduction available in Chrome
+      minimizePlayoutDelay(call.peerConnection);
     });
 
     call.on("close", () => {
@@ -322,6 +339,8 @@ export function usePeerConnection() {
       setParticipants(prev => prev.map(p => p.peerId === peerId
         ? { ...p, screenStream: remoteStream, screenSharing: true } : p));
       wireIceOptimizations(call, true);
+      // Minimize jitter buffer on screen share stream too
+      minimizePlayoutDelay(call.peerConnection);
     });
 
     call.on("close", () => {
@@ -403,9 +422,20 @@ export function usePeerConnection() {
     }
   }, [addSystemMsg, addChatMsg, localTriggerCelebration, startTimer, cleanup, wireMediaCall]);
 
+  // ─── Helper: route low-priority messages through unreliable channel ────────────
+  // Falls back to reliable dataConn if rtDataConn not yet open
+  const sendRt = useCallback((peerId: string, msg: object) => {
+    const item = connectionsRef.current.get(peerId);
+    if (!item) return;
+    const ch = (item.rtDataConn?.open ? item.rtDataConn : item.dataConn);
+    if (ch.open) ch.send(msg);
+  }, []);
+
   const wireDataConnection = useCallback((conn: DataConnection, initialName = "") => {
     if (!connectionsRef.current.has(conn.peer)) {
       connectionsRef.current.set(conn.peer, { dataConn: conn, name: initialName });
+    } else {
+      connectionsRef.current.get(conn.peer)!.dataConn = conn;
     }
 
     conn.on("open", () => {
@@ -414,6 +444,23 @@ export function usePeerConnection() {
       conn.send({ type: "hello", name: myNameRef.current });
       if (screenSharingRef.current) {
         conn.send({ type: "screen-share-state", name: myNameRef.current, active: true });
+      }
+
+      // Open a second unreliable (UDP-like) channel for chat/state/celebrate
+      // maxRetransmits:0 = no SCTP retransmit, no HOL blocking, minimum latency
+      if (peerRef.current) {
+        try {
+          const rtConn = peerRef.current.connect(conn.peer, {
+            reliable: false,
+            serialization: "json",
+            label: "rt",
+          });
+          rtConn.on("open", () => {
+            const entry = connectionsRef.current.get(conn.peer);
+            if (entry) entry.rtDataConn = rtConn;
+          });
+          rtConn.on("data", (data) => { handleData(conn.peer, data); });
+        } catch (_) {}
       }
     });
 
@@ -554,35 +601,38 @@ export function usePeerConnection() {
 
   const sendChatMessage = useCallback((text: string) => {
     addChatMsg(myNameRef.current, text, true);
-    connectionsRef.current.forEach(item => {
-      if (item.dataConn.open) item.dataConn.send({ type: "chat", name: myNameRef.current, text });
+    // Route chat through unreliable channel — no retransmit, no HOL blocking
+    connectionsRef.current.forEach((_, peerId) => {
+      sendRt(peerId, { type: "chat", name: myNameRef.current, text });
     });
-  }, [addChatMsg]);
+  }, [addChatMsg, sendRt]);
 
   const triggerCelebration = useCallback((kind: string) => {
     localTriggerCelebration(kind);
-    connectionsRef.current.forEach(item => {
-      if (item.dataConn.open) item.dataConn.send({ type: "celebrate", name: myNameRef.current, kind });
+    // Route celebration through unreliable channel
+    connectionsRef.current.forEach((_, peerId) => {
+      sendRt(peerId, { type: "celebrate", name: myNameRef.current, kind });
     });
-  }, [localTriggerCelebration]);
+  }, [localTriggerCelebration, sendRt]);
 
   const toggleMic = useCallback(() => {
     const next = !micMuted;
     setMicMuted(next);
     localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !next; });
-    connectionsRef.current.forEach(item => {
-      if (item.dataConn.open) item.dataConn.send({ type: "state-update", name: myNameRef.current, micMuted: next, camDisabled });
+    // State updates are unreliable — fine to drop, next update will correct it
+    connectionsRef.current.forEach((_, peerId) => {
+      sendRt(peerId, { type: "state-update", name: myNameRef.current, micMuted: next, camDisabled });
     });
-  }, [micMuted, camDisabled]);
+  }, [micMuted, camDisabled, sendRt]);
 
   const toggleCam = useCallback(() => {
     const next = !camDisabled;
     setCamDisabled(next);
     localStreamRef.current?.getVideoTracks().forEach(t => { t.enabled = !next; });
-    connectionsRef.current.forEach(item => {
-      if (item.dataConn.open) item.dataConn.send({ type: "state-update", name: myNameRef.current, micMuted, camDisabled: next });
+    connectionsRef.current.forEach((_, peerId) => {
+      sendRt(peerId, { type: "state-update", name: myNameRef.current, micMuted, camDisabled: next });
     });
-  }, [micMuted, camDisabled]);
+  }, [micMuted, camDisabled, sendRt]);
 
   const revertToCamera = useCallback(() => {
     connectionsRef.current.forEach(item => {
