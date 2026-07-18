@@ -50,6 +50,11 @@ export function usePeerConnection() {
     screenSharingRef.current = screenSharing;
   }, [screenSharing]);
 
+  const isHostRef = useRef(false);
+  useEffect(() => {
+    isHostRef.current = isHost;
+  }, [isHost]);
+
   const [localScreenStream, setLocalScreenStream] = useState<MediaStream | null>(null);
   const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
 
@@ -73,6 +78,14 @@ export function usePeerConnection() {
   }, []);
 
   const cleanup = useCallback(() => {
+    if (isHostRef.current && dataConnRef.current && dataConnRef.current.open) {
+      try {
+        dataConnRef.current.send({ type: "host-ended" });
+      } catch (e) {
+        console.warn("Failed to send host-ended signal", e);
+      }
+    }
+
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
@@ -222,8 +235,11 @@ export function usePeerConnection() {
     } else if (msg.type === "screen-share-state") {
       setRemoteScreenSharing(msg.active);
       addSystemMsg(`${msg.active ? (msg.name || friendName || "Friend") + " started screen sharing." : (msg.name || friendName || "Friend") + " stopped screen sharing."}`);
+    } else if (msg.type === "host-ended") {
+      alert("The host has ended the watch party.");
+      cleanup();
     }
-  }, [addSystemMsg, addChatMsg, localTriggerCelebration, startTimer, friendName]);
+  }, [addSystemMsg, addChatMsg, localTriggerCelebration, startTimer, friendName, cleanup]);
 
   const setupLocalMedia = useCallback(async () => {
     try {
@@ -277,9 +293,10 @@ export function usePeerConnection() {
     conn.on("data", handleData);
 
     conn.on("close", () => {
-      setConnectionStatus('disconnected');
-      addSystemMsg("Your friend disconnected.");
-      setRemoteStream(null);
+      if (!isHostRef.current) {
+        alert("The host has left. The watch party has ended.");
+      }
+      cleanup();
     });
 
     conn.on("error", (err) => {
@@ -287,7 +304,7 @@ export function usePeerConnection() {
       setConnectionStatus('error');
       addSystemMsg("Connection error encountered.");
     });
-  }, [myName, handleData, addSystemMsg]);
+  }, [myName, handleData, addSystemMsg, cleanup]);
 
   const wireScreenCall = useCallback((call: MediaConnection) => {
     screenCallRef.current = call;
