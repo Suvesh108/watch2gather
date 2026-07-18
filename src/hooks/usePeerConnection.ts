@@ -133,6 +133,9 @@ export function usePeerConnection() {
   const isHostRef = useRef(false);
   useEffect(() => { isHostRef.current = isHost; }, [isHost]);
 
+  const timerSecondsRef = useRef(0);
+  useEffect(() => { timerSecondsRef.current = timerSeconds; }, [timerSeconds]);
+
   useEffect(() => { localScreenStreamRef.current = localScreenStream; }, [localScreenStream]);
   useEffect(() => { localStreamRef.current = localStream; }, [localStream]);
   useEffect(() => { participantsRef.current = participants; }, [participants]);
@@ -406,6 +409,14 @@ export function usePeerConnection() {
       addSystemMsg(`${msg.name || "A friend"} joined the watch party ⚽`);
       startTimer();
 
+      // Send the current timer seconds to the newly joined peer
+      try {
+        connectionsRef.current.get(peerId)?.dataConn.send({
+          type: "timer-sync",
+          seconds: timerSecondsRef.current
+        });
+      } catch (_) {}
+
       // Coordinate mesh topology if host
       if (isHostRef.current) {
         const currentPeers = Array.from(connectionsRef.current.entries())
@@ -457,6 +468,9 @@ export function usePeerConnection() {
         confirmText: "Back to Lobby",
         onConfirm: () => setModal(null)
       });
+    } else if (msg.type === "timer-sync") {
+      setTimerSeconds(msg.seconds);
+      startTimer();
     }
   }, [addSystemMsg, addChatMsg, localTriggerCelebration, startTimer, cleanup, wireMediaCall, setModal]);
 
@@ -609,6 +623,7 @@ export function usePeerConnection() {
       newPeer.on("open", () => {
         setConnectionStatus('waiting');
         setIsInRoom(true);
+        startTimer();
       });
 
       newPeer.on("connection", (conn) => { wireDataConnection(conn); });
@@ -780,11 +795,14 @@ export function usePeerConnection() {
   // ─── Heartbeat Keepalive Interval ──────────────────────────────────────────
   useEffect(() => {
     const interval = setInterval(() => {
-      // 1. Keep WebRTC data connections warm (prevents NAT timeout)
+      // 1. Keep WebRTC data connections warm (prevents NAT timeout) and broadcast host timer sync
       connectionsRef.current.forEach((connItem) => {
         if (connItem.dataConn && connItem.dataConn.open) {
           try {
             connItem.dataConn.send({ type: "ping" });
+            if (isHostRef.current) {
+              connItem.dataConn.send({ type: "timer-sync", seconds: timerSecondsRef.current });
+            }
           } catch (_) {}
         }
         if (connItem.rtDataConn && connItem.rtDataConn.open) {
