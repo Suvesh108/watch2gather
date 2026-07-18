@@ -247,12 +247,40 @@ export function usePeerConnection() {
   }, [addSystemMsg, addChatMsg, localTriggerCelebration, startTimer, friendName]);
 
   const setupLocalMedia = useCallback(async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-    });
-    setLocalStream(stream);
-    return stream;
+    try {
+      // First try standard Full HD settings
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+      setLocalStream(stream);
+      return stream;
+    } catch (err) {
+      console.warn("Full HD getUserMedia failed, attempting fallback resolution (1280x720):", err);
+      try {
+        // Fall back to standard HD
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        });
+        setLocalStream(stream);
+        return stream;
+      } catch (err2) {
+        console.warn("HD getUserMedia failed, attempting generic fallback:", err2);
+        try {
+          // Absolute fallback for older MacBooks, iPhones/iPads, and Safari compatibility
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true
+          });
+          setLocalStream(stream);
+          return stream;
+        } catch (err3) {
+          console.error("All getUserMedia attempts failed:", err3);
+          throw err3;
+        }
+      }
+    }
   }, []);
 
   const wireDataConnection = useCallback((conn: DataConnection) => {

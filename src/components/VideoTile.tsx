@@ -35,6 +35,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
         video.srcObject = stream;
         video.play().catch(err => {
           console.warn("Autoplay block or playback error:", err);
+          setIsPaused(true);
         });
       } else {
         video.srcObject = null;
