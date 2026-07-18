@@ -435,12 +435,15 @@ export function usePeerConnection() {
         audioTrack.enabled = newEnabled;
         setMicMuted(!newEnabled);
 
-        // Direct RTCRtpSender fallback modification for active WebRTC pipeline
-        if (mediaCallRef.current && mediaCallRef.current.peerConnection) {
-          const senders = mediaCallRef.current.peerConnection.getSenders();
-          const audioSender = senders.find(s => s.track && s.track.kind === "audio");
-          if (audioSender && audioSender.track) {
-            audioSender.track.enabled = newEnabled;
+        // Only modify the sender track directly if we are NOT screen sharing
+        // (Otherwise, the sender track is the mixed audio, and disabling it would silence the YouTube sound as well!)
+        if (!screenSharingRef.current) {
+          if (mediaCallRef.current && mediaCallRef.current.peerConnection) {
+            const senders = mediaCallRef.current.peerConnection.getSenders();
+            const audioSender = senders.find(s => s.track && s.track.kind === "audio");
+            if (audioSender && audioSender.track) {
+              audioSender.track.enabled = newEnabled;
+            }
           }
         }
       }
