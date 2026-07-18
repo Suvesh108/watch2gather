@@ -512,6 +512,16 @@ export function usePeerConnection() {
         wireMediaCall(call);
       }
 
+      // Initiate screen share stream call to this peer if currently sharing screen
+      if (screenSharingRef.current && localScreenStreamRef.current && peerRef.current) {
+        const call = peerRef.current.call(conn.peer, localScreenStreamRef.current, {
+          metadata: { type: "screen-share" }
+        });
+        const entry = connectionsRef.current.get(conn.peer);
+        if (entry) entry.screenCall = call;
+        wireIceOptimizations(call, true);
+      }
+
       if (isInitiator && peerRef.current) {
         try {
           const rtConn = peerRef.current.connect(conn.peer, {
@@ -536,7 +546,7 @@ export function usePeerConnection() {
       console.error("Data connection error", err);
       handlePeerDisconnect(conn.peer);
     });
-  }, [handleData, handlePeerDisconnect]);
+  }, [handleData, handlePeerDisconnect, wireIceOptimizations]);
 
   // ─── Local media setup with contentHint and latency-optimized constraints ────
   const setupLocalMedia = useCallback(async () => {
