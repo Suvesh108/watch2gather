@@ -154,7 +154,7 @@ export function usePeerConnection() {
     ]);
   }, []);
 
-  const boostBitrate = useCallback((call: MediaConnection) => {
+  const boostBitrate = useCallback((call: MediaConnection, isScreen: boolean = false) => {
     try {
       const pc = call.peerConnection;
       if (!pc) return;
@@ -162,8 +162,17 @@ export function usePeerConnection() {
         if (sender.track && sender.track.kind === "video") {
           const params = sender.getParameters();
           if (!params.encodings) params.encodings = [{}];
-          params.encodings[0].maxBitrate = 4000000; // ~4 Mbps
-          sender.setParameters(params).catch(() => {});
+          
+          // Boost parameters to maximum potential quality
+          if (isScreen) {
+            params.encodings[0].maxBitrate = 20000000; // 20 Mbps for ultra-smooth screen sharing
+          } else {
+            params.encodings[0].maxBitrate = 8000000;  // 8 Mbps for pristine camera video
+          }
+          
+          sender.setParameters(params)
+            .then(() => console.log(`Bitrate successfully boosted for ${isScreen ? 'Screen' : 'Camera'} to ${isScreen ? '20' : '8'} Mbps!`))
+            .catch(err => console.warn("Set parameters failed", err));
         }
       });
     } catch (e) {
@@ -379,6 +388,7 @@ export function usePeerConnection() {
         } else {
           call.answer(stream);
           wireMediaCall(call);
+          setTimeout(() => boostBitrate(call, false), 1000);
         }
       });
 
@@ -427,6 +437,7 @@ export function usePeerConnection() {
 
         const call = newPeer.call(targetId, stream);
         wireMediaCall(call);
+        setTimeout(() => boostBitrate(call, false), 1000);
       });
 
       newPeer.on("call", (call) => {
@@ -436,6 +447,7 @@ export function usePeerConnection() {
         } else {
           call.answer(stream);
           wireMediaCall(call);
+          setTimeout(() => boostBitrate(call, false), 1000);
         }
       });
 
@@ -548,7 +560,11 @@ export function usePeerConnection() {
     if (!screenSharing) {
       try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: { frameRate: 30 },
+          video: {
+            width: { ideal: 1920, max: 3840 },
+            height: { ideal: 1080, max: 2160 },
+            frameRate: { ideal: 60, max: 60 }
+          },
           audio: {
             echoCancellation: false,
             noiseSuppression: false,
@@ -565,6 +581,7 @@ export function usePeerConnection() {
             metadata: { type: "screen-share" }
           });
           wireScreenCall(call);
+          setTimeout(() => boostBitrate(call, true), 1000);
         }
 
         if (dataConnRef.current && dataConnRef.current.open) {
