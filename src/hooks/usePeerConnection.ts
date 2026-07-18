@@ -317,7 +317,22 @@ export function usePeerConnection() {
     if (info) info.mediaCall = call;
 
     call.on("stream", (remoteStream) => {
-      setParticipants(prev => prev.map(p => p.peerId === peerId ? { ...p, stream: remoteStream } : p));
+      setParticipants(prev => {
+        const exists = prev.some(p => p.peerId === peerId);
+        if (exists) {
+          return prev.map(p => p.peerId === peerId ? { ...p, stream: remoteStream } : p);
+        } else {
+          return [...prev, {
+            peerId,
+            name: info?.name || "Friend",
+            stream: remoteStream,
+            screenStream: null,
+            micMuted: false,
+            camDisabled: false,
+            screenSharing: false
+          }];
+        }
+      });
       wireIceOptimizations(call, false);
       // Minimize jitter buffer — biggest single latency reduction available in Chrome
       minimizePlayoutDelay(call.peerConnection);
@@ -336,8 +351,22 @@ export function usePeerConnection() {
     if (info) info.screenCall = call;
 
     call.on("stream", (remoteStream) => {
-      setParticipants(prev => prev.map(p => p.peerId === peerId
-        ? { ...p, screenStream: remoteStream, screenSharing: true } : p));
+      setParticipants(prev => {
+        const exists = prev.some(p => p.peerId === peerId);
+        if (exists) {
+          return prev.map(p => p.peerId === peerId ? { ...p, screenStream: remoteStream, screenSharing: true } : p);
+        } else {
+          return [...prev, {
+            peerId,
+            name: info?.name || "Friend",
+            stream: null,
+            screenStream: remoteStream,
+            micMuted: false,
+            camDisabled: false,
+            screenSharing: true
+          }];
+        }
+      });
       wireIceOptimizations(call, true);
       // Minimize jitter buffer on screen share stream too
       minimizePlayoutDelay(call.peerConnection);
