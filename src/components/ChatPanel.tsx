@@ -27,7 +27,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage })
   };
 
   return (
-    <div className="chat-col w-full md:w-[320px] shrink-0 flex flex-col bg-navy-900 border-t md:border-t-0 md:border-l border-navy-700 h-[220px] md:h-auto min-h-0">
+    <div className="chat-col flex-1 flex flex-col bg-navy-900 h-full min-h-0 w-full">
       <div className="chat-header p-3.5 px-4 border-b border-navy-700 text-[12px] font-bold tracking-widest uppercase text-dim select-none">
         Match Chat
       </div>

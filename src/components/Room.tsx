@@ -205,17 +205,6 @@ export const Room: React.FC<RoomProps> = ({
                   placeholder={isLocalPrimary ? "Setting up screen share…" : "Waiting for screen share…"}
                 />
               </div>
-
-              {/* Secondary View (Floating PIP Box) */}
-              <div className="absolute bottom-4 right-4 w-32 h-24 sm:w-48 sm:h-32 z-20 shadow-[0_12px_36px_-6px_rgba(0,0,0,0.8)] border border-navy-700/80 rounded-xl overflow-hidden bg-navy-900 transition-all duration-300">
-                <VideoTile
-                  stream={isLocalPrimary ? remoteStream : localStream}
-                  label={isLocalPrimary ? friendName : `${myName} (you)`}
-                  isLocal={!isLocalPrimary}
-                  muted={!isLocalPrimary}
-                  placeholder={isLocalPrimary ? "Camera off" : "No camera"}
-                />
-              </div>
             </div>
           ) : (
             <div className="video-grid flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 min-h-0">
@@ -300,8 +289,34 @@ export const Room: React.FC<RoomProps> = ({
           </div>
         </div>
 
-        {/* Chat log column */}
-        <ChatPanel messages={chatMessages} onSendMessage={sendChatMessage} />
+        {/* Right side container: containing friend's camera vertically on the left of Chat log when screen sharing is active */}
+        <div className={`shrink-0 flex border-t md:border-t-0 md:border-l border-navy-700 bg-navy-900 min-h-0 ${
+          hasPrimary 
+            ? 'w-full md:w-[500px] flex-col md:flex-row' 
+            : 'w-full md:w-[320px] flex-col'
+        }`}>
+          {hasPrimary && (
+            <div className="w-full md:w-[180px] shrink-0 border-b md:border-b-0 md:border-r border-navy-700 p-3.5 flex flex-col gap-2 bg-navy-950 select-none">
+              <div className="text-[10px] uppercase text-dim tracking-[0.12em] font-bold">
+                {isLocalPrimary ? friendName : `${myName} (you)`}
+              </div>
+              <div className="w-full aspect-[4/3] rounded-lg overflow-hidden border border-navy-700 bg-black shadow-lg">
+                <VideoTile
+                  stream={isLocalPrimary ? remoteStream : localStream}
+                  label={isLocalPrimary ? friendName : `${myName} (you)`}
+                  isLocal={!isLocalPrimary}
+                  muted={!isLocalPrimary}
+                  placeholder={isLocalPrimary ? "Camera off" : "No camera"}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Chat log column */}
+          <div className="flex-1 flex flex-col min-h-0 h-[300px] md:h-auto">
+            <ChatPanel messages={chatMessages} onSendMessage={sendChatMessage} />
+          </div>
+        </div>
       </div>
 
       {/* Synchronized celebration overlays */}
