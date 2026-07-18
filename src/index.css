@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --navy-950: #070b14;
+  --navy-900: #0e1626;
+  --navy-800: #16213a;
+  --navy-700: #1f2d4d;
+  --gold: #e8b44c;
+  --gold-bright: #f4cd6e;
+  --pitch: #3fa34d;
+  --pitch-bright: #5fd873;
+  --white: #f5f3ee;
+  --dim: #8996b0;
+  --red: #e1543d;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(ellipse 1200px 600px at 50% -10%, rgba(63, 163, 77, 0.12), transparent 60%),
+    var(--navy-950);
+  color: var(--white);
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+/* Stadium light stripes background effect */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    115deg,
+    rgba(255, 255, 255, 0.015) 0px,
+    rgba(255, 255, 255, 0.015) 2px,
+    transparent 2px,
+    transparent 80px
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Prevent scroll bar from shifting UI */
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  z-index: 10;
+}
+
+/* Custom styling for custom-scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--navy-950);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--navy-700);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--navy-800);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.animate-pulse-slow {
+  animation: pulse 1.6s infinite;
+}
