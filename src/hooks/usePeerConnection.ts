@@ -80,8 +80,13 @@ const MAX_SCREEN_BITRATE  = 5_000_000; // 5.0 Mbps — sharp 1080p screen share 
 function minimizePlayoutDelay(pc: RTCPeerConnection) {
   try {
     pc.getReceivers().forEach(receiver => {
+      // Chrome/Chromium playout delay hint
       if ('playoutDelayHint' in receiver) {
         (receiver as any).playoutDelayHint = 0;
+      }
+      // Standard WebRTC spec jitter buffer target (Chrome 122+)
+      if ('jitterBufferTarget' in receiver) {
+        (receiver as any).jitterBufferTarget = 0;
       }
     });
   } catch (_) {}
@@ -251,12 +256,16 @@ export function usePeerConnection() {
       const state = pc.iceConnectionState;
       if (state === 'connected' || state === 'completed') {
         applyEncodingParams(pc, isScreen);
+        minimizePlayoutDelay(pc);
       }
     };
 
     pc.addEventListener('iceconnectionstatechange', tryApply);
     // Delayed fallback: 500ms is sufficient for fast local networks
-    setTimeout(() => applyEncodingParams(pc, isScreen), 500);
+    setTimeout(() => {
+      applyEncodingParams(pc, isScreen);
+      minimizePlayoutDelay(pc);
+    }, 500);
   }, [applyEncodingParams]);
 
   const startTimer = useCallback(() => {
