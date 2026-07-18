@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Play, Sparkles } from 'lucide-react';
+import { Play } from 'lucide-react';
 
 interface VideoTileProps {
   stream: MediaStream | null;
@@ -14,7 +14,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
   label,
   isLocal,
   muted = false,
-  placeholder = 'Waiting for connection…',
+  placeholder = 'Camera off',
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPaused, setIsPaused] = useState(false);
@@ -43,7 +43,6 @@ export const VideoTile: React.FC<VideoTileProps> = ({
     }
   }, [stream]);
 
-  // Extract initials for placeholder visual avatar
   const getInitials = (nameStr: string) => {
     const cleanStr = nameStr.replace(/\s*\(you\)\s*|\[Shared Screen\]/gi, '').trim();
     if (!cleanStr) return 'WC';
@@ -51,7 +50,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
   };
 
   return (
-    <div className="relative bg-navy-950 rounded-2xl overflow-hidden border border-navy-800/80 flex items-center justify-center w-full h-full shadow-lg group transition duration-200 hover:border-navy-700/80">
+    <div className="relative bg-[#171717] rounded-2xl overflow-hidden border border-[#3c4043] flex items-center justify-center w-full h-full group shadow-md transition duration-200">
       
       {stream ? (
         <video
@@ -59,21 +58,21 @@ export const VideoTile: React.FC<VideoTileProps> = ({
           autoPlay
           playsInline
           muted={muted}
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.01]"
+          className="w-full h-full object-cover"
           onPause={() => setIsPaused(true)}
           onPlay={() => setIsPaused(false)}
         />
       ) : (
-        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-navy-900 to-navy-950 p-5 relative select-none">
+        <div className="w-full h-full flex flex-col items-center justify-center p-5 relative select-none">
           {typeof placeholder === 'string' ? (
             <div className="flex flex-col items-center gap-3.5 text-center">
-              {/* Premium Avatar Indicator */}
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-navy-800 to-navy-700 border border-navy-600 flex items-center justify-center text-gold font-teko text-2xl shadow-inner animate-float">
+              {/* Clean Google-Meet circular avatar */}
+              <div className="w-16 h-16 rounded-full bg-[#3c4043] flex items-center justify-center text-white text-xl font-medium shadow">
                 {getInitials(label)}
               </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-white text-xs font-bold">{label}</span>
-                <span className="text-dim text-[10px] uppercase tracking-wider font-semibold">{placeholder}</span>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-white text-xs font-semibold">{label}</span>
+                <span className="text-[#9aa0a6] text-[10px] uppercase tracking-wider">{placeholder}</span>
               </div>
             </div>
           ) : (
@@ -82,36 +81,26 @@ export const VideoTile: React.FC<VideoTileProps> = ({
         </div>
       )}
 
-      {/* Label Badge Overlay */}
+      {/* Clean label overlay (Google Meet style) */}
       {stream && (
-        <div className="absolute left-3 bottom-3 z-20 bg-navy-950/80 backdrop-blur-md border border-white/5 py-1.5 px-3 rounded-full text-xs font-bold text-white shadow-lg select-none flex items-center gap-1.5 transition duration-150 group-hover:border-gold/30">
-          <span className={`w-1.5 h-1.5 rounded-full ${isLocal ? 'bg-gold animate-pulse' : 'bg-pitch-bright'}`} />
+        <div className="absolute left-3 bottom-3 z-20 bg-[#202124]/85 border border-[#3c4043]/30 py-1 px-3 rounded-lg text-xs font-medium text-white shadow-md select-none flex items-center gap-2">
+          {isLocal && <span className="w-1.5 h-1.5 rounded-full bg-[#81c995]" />}
           {label}
         </div>
       )}
 
-      {/* Premium HD / Screen Share Quality Badge */}
-      {stream && (
-        <div className="absolute right-3 top-3 z-20 flex items-center gap-1.5 select-none">
-          <div className="bg-navy-950/80 backdrop-blur-md border border-white/5 py-1 px-2.5 rounded-full text-[9px] font-extrabold tracking-wider text-gold-bright uppercase flex items-center gap-1 shadow-lg">
-            <Sparkles className="w-2.5 h-2.5 text-gold" />
-            <span>{label.includes('Screen') ? '1080P' : '720P HD'}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Autoplay play block recovery screen */}
+      {/* Autoplay block recovery overlay */}
       {stream && isPaused && (
         <div 
           onClick={handlePlayClick}
-          className="absolute inset-0 bg-black/75 backdrop-blur-[4px] flex flex-col items-center justify-center gap-3 z-30 cursor-pointer select-none transition-all duration-200 animate-scale-in"
+          className="absolute inset-0 bg-[#202124]/90 flex flex-col items-center justify-center gap-3.5 z-30 cursor-pointer select-none transition-all duration-200 animate-scale-in"
         >
-          <div className="bg-navy-900/90 border border-navy-700 hover:border-gold rounded-2xl p-4 flex items-center justify-center shadow-2xl transition-all duration-150 active:scale-90">
-            <Play className="w-6 h-6 text-gold fill-gold animate-pulse" />
+          <div className="bg-[#3c4043] border border-[#5f6368] rounded-full w-12 h-12 flex items-center justify-center shadow-lg transition duration-150 hover:bg-[#4e5256] active:scale-90">
+            <Play className="w-5 h-5 text-white fill-white ml-0.5" />
           </div>
-          <div className="flex flex-col items-center gap-1 text-center">
-            <span className="text-white text-xs font-bold">Autoplay Blocked</span>
-            <span className="text-dim text-[10px] uppercase tracking-wider font-semibold">Click to resume party stream</span>
+          <div className="flex flex-col items-center gap-0.5 text-center">
+            <span className="text-white text-xs font-medium">Autoplay blocked</span>
+            <span className="text-[#9aa0a6] text-[10px] uppercase tracking-wider">Click to play video stream</span>
           </div>
         </div>
       )}

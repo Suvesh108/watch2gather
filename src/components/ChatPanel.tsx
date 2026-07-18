@@ -27,22 +27,30 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage })
     }
   };
 
+  // Format message time
+  const getFormattedTime = (timestamp: number) => {
+    const date = new Date(timestamp);
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  };
+
   return (
-    <div className="chat-col flex-1 flex flex-col bg-navy-950/20 h-full min-h-0 w-full select-none">
+    <div className="chat-col flex-1 flex flex-col bg-[#202124] h-full min-h-0 w-full select-none border-[#3c4043]">
       
-      {/* Premium Header */}
-      <div className="chat-header p-4 border-b border-navy-800/80 text-[11px] font-extrabold tracking-[0.15em] uppercase text-white select-none flex items-center gap-2 bg-navy-950/40">
-        <MessageSquare className="w-3.5 h-3.5 text-gold" />
-        <span>Match Chat Log</span>
+      {/* Google Meet Style Header */}
+      <div className="chat-header p-4 border-b border-[#3c4043] text-xs font-bold tracking-wider uppercase text-white select-none flex items-center gap-2">
+        <MessageSquare className="w-4 h-4 text-[#8ab4f8]" />
+        <span>In-call messages</span>
       </div>
       
-      {/* Chat Messages Log list */}
-      <div className="chat-log flex-1 overflow-y-auto p-4 flex flex-col gap-3 min-h-0 custom-scrollbar select-text">
+      {/* Messages List Log */}
+      <div className="chat-log flex-1 overflow-y-auto p-4 flex flex-col gap-4 min-h-0 custom-scrollbar select-text">
         {messages.map((msg) => {
           if (msg.type === 'system') {
             return (
-              <div key={msg.id} className="msg system text-center my-1 select-none animate-fade-in">
-                <span className="inline-block bg-navy-900/60 border border-navy-850/80 text-dim italic text-[10.5px] py-1.5 px-3.5 rounded-full shadow-sm max-w-[90%] leading-relaxed break-words">
+              <div key={msg.id} className="msg system text-center my-0.5 select-none animate-fade-in">
+                <span className="inline-block text-[#9aa0a6] text-[10.5px] italic leading-relaxed break-all">
                   {msg.text}
                 </span>
               </div>
@@ -50,25 +58,19 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage })
           }
 
           return (
-            <div 
-              key={msg.id} 
-              className={`flex flex-col gap-0.5 max-w-[85%] animate-fade-in ${
-                msg.isMe ? 'self-end items-end' : 'self-start items-start'
-              }`}
-            >
-              {/* Sender Name label */}
-              <span className="text-[9px] font-bold text-dim uppercase tracking-wider px-1 select-none">
-                {msg.isMe ? 'You' : msg.sender}
-              </span>
+            <div key={msg.id} className="flex flex-col gap-1 animate-fade-in">
+              {/* Name and time header (Google Meet style) */}
+              <div className="flex items-baseline gap-2 select-none">
+                <span className="text-xs font-semibold text-white">
+                  {msg.isMe ? 'You' : msg.sender}
+                </span>
+                <span className="text-[9px] text-[#9aa0a6]">
+                  {getFormattedTime(msg.timestamp)}
+                </span>
+              </div>
               
-              {/* Speech bubble */}
-              <div 
-                className={`py-2 px-3.5 rounded-2xl text-[13px] leading-relaxed break-words shadow-md ${
-                  msg.isMe 
-                    ? 'bg-gold text-navy-950 font-medium rounded-tr-none' 
-                    : 'bg-navy-800 border border-navy-700/50 text-white rounded-tl-none'
-                }`}
-              >
+              {/* Message text */}
+              <div className="text-[13px] text-[#e8eaed] leading-relaxed break-words pl-0.5">
                 {msg.text}
               </div>
             </div>
@@ -77,23 +79,24 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage })
         <div ref={logEndRef} />
       </div>
 
-      {/* Input row */}
-      <div className="chat-input-row flex gap-2 p-3 border-t border-navy-800/80 bg-navy-950/40 backdrop-blur-md">
+      {/* Input Row */}
+      <div className="chat-input-row flex gap-2 p-3 border-t border-[#3c4043] bg-[#202124]/40">
         <input
           type="text"
-          placeholder="Send message..."
+          placeholder="Send a message to everyone"
           maxLength={300}
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           onKeyDown={handleKeyDown}
-          className="flex-1 bg-navy-950 border border-navy-800 rounded-xl py-2 px-3 text-[13px] text-white outline-none focus:border-gold focus:ring-1 focus:ring-gold/20 transition duration-150 placeholder-dim/30"
+          className="flex-1 bg-[#202124] border border-[#5f6368]/60 rounded-full py-2 px-4 text-sm text-white outline-none focus:border-[#8ab4f8] focus:ring-1 focus:ring-[#8ab4f8]/20 transition duration-150 placeholder-[#9aa0a6]/50"
         />
         <button
           onClick={handleSend}
           disabled={!inputText.trim()}
-          className="bg-gold text-navy-950 font-extrabold w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gold-bright transition duration-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer active:scale-95 shadow-md shrink-0"
+          className="bg-transparent text-[#8ab4f8] hover:text-[#aecbfa] hover:bg-[#3c4043] w-9 h-9 flex items-center justify-center rounded-full transition duration-100 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer active:scale-95 shrink-0"
+          title="Send message"
         >
-          <Send className="w-3.5 h-3.5" />
+          <Send className="w-4 h-4" />
         </button>
       </div>
     </div>
