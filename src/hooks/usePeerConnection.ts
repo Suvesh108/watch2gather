@@ -28,22 +28,95 @@ export interface Participant {
 
 const ROOM_PREFIX = "matchday-wc26-";
 
+// ─── ICE Configuration ───────────────────────────────────────────────────────
+// Multiple STUN servers + public TURN relay for NAT traversal on all networks
+const ICE_SERVERS: RTCIceServer[] = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun.cloudflare.com:3478" },
+  // Public free TURN relay as fallback for symmetric NAT / corporate firewalls
+  {
+    urls: "turn:openrelay.metered.ca:80",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+  {
+    urls: "turn:openrelay.metered.ca:443",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+  {
+    urls: "turn:openrelay.metered.ca:443?transport=tcp",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+];
+
+const PEER_CONFIG = {
+  debug: 0,
+  config: {
+    iceServers: ICE_SERVERS,
+    iceTransportPolicy: "all" as RTCIceTransportPolicy,
+    bundlePolicy: "max-bundle" as RTCBundlePolicy, // Audio+video+data on ONE transport → fewer round-trips
+    rtcpMuxPolicy: "require" as RTCRtcpMuxPolicy,  // Mux RTCP+RTP on same port
+    iceCandidatePoolSize: 10,                       // Pre-gather ICE candidates to cut initial connect time
+  },
+};
+
+// ─── Adaptive bitrate tiers for mesh topology ────────────────────────────────
+// As more peers join, each user's upload budget per connection must shrink
+function getAdaptiveCameraBitrate(peerCount: number, packetLossRate: number): number {
+  let base: number;
+  if (peerCount <= 2)       base = 1_250_000;  // 720p full
+  else if (peerCount <= 4)  base = 900_000;    // 720p light
+  else if (peerCount <= 8)  base = 600_000;    // 540p
+  else if (peerCount <= 12) base = 350_000;    // 360p
+  else                      base = 150_000;    // 240p survival
+
+  // Further reduce if packet loss > 5%
+  if (packetLossRate > 0.05) base = Math.floor(base * 0.6);
+  return base;
+}
+
+// ─── Codec preference helper ─────────────────────────────────────────────────
+// Prefer VP9 > H264 > VP8 for best quality/bitrate across Chrome, Firefox, Safari iOS 16+
+function applyCodecPreferences(pc: RTCPeerConnection) {
+  try {
+    const codecPriority = ['video/vp9', 'video/h264', 'video/vp8'];
+    pc.getTransceivers().forEach(transceiver => {
+      if (transceiver.receiver?.track?.kind !== 'video') return;
+      const caps = RTCRtpSender.getCapabilities?.('video');
+      if (!caps) return;
+      const sorted = [...caps.codecs].sort((a, b) => {
+        const ia = codecPriority.findIndex(c => a.mimeType.toLowerCase().includes(c));
+        const ib = codecPriority.findIndex(c => b.mimeType.toLowerCase().includes(c));
+        const ra = ia === -1 ? 999 : ia;
+        const rb = ib === -1 ? 999 : ib;
+        return ra - rb;
+      });
+      try { transceiver.setCodecPreferences(sorted); } catch (_) {}
+    });
+  } catch (_) {}
+}
+
 export function usePeerConnection() {
   const [myName, setMyName] = useState("");
   const [roomCode, setRoomCode] = useState("");
   const [isHost, setIsHost] = useState(false);
   const [isInRoom, setIsInRoom] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'setting-up' | 'waiting' | 'connecting' | 'connected' | 'disconnected' | 'error'>('idle');
+  const [connectionStatus, setConnectionStatus] = useState<
+    'idle' | 'setting-up' | 'waiting' | 'connecting' | 'connected' | 'disconnected' | 'error'
+  >('idle');
   const [errorMsg, setErrorMsg] = useState("");
 
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [localScreenStream, setLocalScreenStream] = useState<MediaStream | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
-  
+
   const [micMuted, setMicMuted] = useState(false);
   const [camDisabled, setCamDisabled] = useState(false);
   const [screenSharing, setScreenSharing] = useState(false);
-  
+
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [activeCelebration, setActiveCelebration] = useState<CelebrationEvent | null>(null);
   const [timerSeconds, setTimerSeconds] = useState(0);
@@ -52,31 +125,23 @@ export function usePeerConnection() {
   const localStreamRef = useRef<MediaStream | null>(null);
   const localScreenStreamRef = useRef<MediaStream | null>(null);
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const adaptiveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const participantsRef = useRef<Participant[]>([]);
 
   const myNameRef = useRef("");
-  useEffect(() => {
-    myNameRef.current = myName;
-  }, [myName]);
+  useEffect(() => { myNameRef.current = myName; }, [myName]);
 
   const screenSharingRef = useRef(false);
-  useEffect(() => {
-    screenSharingRef.current = screenSharing;
-  }, [screenSharing]);
+  useEffect(() => { screenSharingRef.current = screenSharing; }, [screenSharing]);
 
   const isHostRef = useRef(false);
-  useEffect(() => {
-    isHostRef.current = isHost;
-  }, [isHost]);
+  useEffect(() => { isHostRef.current = isHost; }, [isHost]);
 
-  useEffect(() => {
-    localScreenStreamRef.current = localScreenStream;
-  }, [localScreenStream]);
+  useEffect(() => { localScreenStreamRef.current = localScreenStream; }, [localScreenStream]);
+  useEffect(() => { localStreamRef.current = localStream; }, [localStream]);
+  useEffect(() => { participantsRef.current = participants; }, [participants]);
 
-  useEffect(() => {
-    localStreamRef.current = localStream;
-  }, [localStream]);
-
-  // Maintain connections to all other peers in the mesh
+  // Mesh connection registry
   const connectionsRef = useRef<Map<string, {
     dataConn: DataConnection;
     mediaCall?: MediaConnection;
@@ -84,28 +149,20 @@ export function usePeerConnection() {
     name: string;
   }>>(new Map());
 
-  // Clean up on component unmount
-  useEffect(() => {
-    return () => {
-      cleanup();
-    };
-  }, []);
+  useEffect(() => { return () => { cleanup(); }; }, []);
 
   const cleanup = useCallback(() => {
     if (isHostRef.current) {
       connectionsRef.current.forEach(item => {
         if (item.dataConn.open) {
-          try {
-            item.dataConn.send({ type: "host-ended" });
-          } catch (e) {}
+          try { item.dataConn.send({ type: "host-ended" }); } catch (_) {}
         }
       });
     }
 
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
-      timerIntervalRef.current = null;
-    }
+    if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null; }
+    if (adaptiveIntervalRef.current) { clearInterval(adaptiveIntervalRef.current); adaptiveIntervalRef.current = null; }
+
     connectionsRef.current.forEach(item => {
       if (item.mediaCall) item.mediaCall.close();
       if (item.screenCall) item.screenCall.close();
@@ -113,16 +170,10 @@ export function usePeerConnection() {
     });
     connectionsRef.current.clear();
 
-    if (peerRef.current) {
-      peerRef.current.destroy();
-      peerRef.current = null;
-    }
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop());
-    }
-    if (localScreenStreamRef.current) {
-      localScreenStreamRef.current.getTracks().forEach(track => track.stop());
-    }
+    if (peerRef.current) { peerRef.current.destroy(); peerRef.current = null; }
+    if (localStreamRef.current) { localStreamRef.current.getTracks().forEach(t => t.stop()); }
+    if (localScreenStreamRef.current) { localScreenStreamRef.current.getTracks().forEach(t => t.stop()); }
+
     setLocalStream(null);
     setLocalScreenStream(null);
     setParticipants([]);
@@ -136,62 +187,111 @@ export function usePeerConnection() {
   }, []);
 
   const addSystemMsg = useCallback((text: string) => {
-    setChatMessages(prev => [
-      ...prev,
-      {
-        id: Math.random().toString(36).substring(2, 9),
-        sender: 'System',
-        text,
-        type: 'system',
-        isMe: false,
-        timestamp: Date.now()
-      }
-    ]);
+    setChatMessages(prev => [...prev, {
+      id: Math.random().toString(36).substring(2, 9),
+      sender: 'System', text, type: 'system', isMe: false, timestamp: Date.now()
+    }]);
   }, []);
 
   const addChatMsg = useCallback((sender: string, text: string, isMe: boolean) => {
-    setChatMessages(prev => [
-      ...prev,
-      {
-        id: Math.random().toString(36).substring(2, 9),
-        sender,
-        text,
-        type: 'chat',
-        isMe,
-        timestamp: Date.now()
-      }
-    ]);
+    setChatMessages(prev => [...prev, {
+      id: Math.random().toString(36).substring(2, 9),
+      sender, text, type: 'chat', isMe, timestamp: Date.now()
+    }]);
   }, []);
 
-  const boostBitrate = useCallback((call: MediaConnection, isScreen: boolean = false) => {
-    try {
-      const pc = call.peerConnection;
-      if (!pc) return;
-      pc.getSenders().forEach(sender => {
-        if (sender.track && sender.track.kind === "video") {
-          const params = sender.getParameters();
-          if (!params.encodings) params.encodings = [{}];
-          
-          // Sweet spot configuration to avoid buffer cues and latency, but keep high quality
-          if (isScreen) {
-            params.encodings[0].maxBitrate = 5000000; // 5 Mbps for crisp 60fps casting
-          } else {
-            params.encodings[0].maxBitrate = 2500000; // 2.5 Mbps for HD cameras
-          }
-          
-          sender.setParameters(params).catch(() => {});
+  // ─── Apply full encoding parameter profile ──────────────────────────────────
+  const applyEncodingParams = useCallback((
+    pc: RTCPeerConnection,
+    isScreen: boolean,
+    overrideBitrate?: number
+  ) => {
+    pc.getSenders().forEach(async sender => {
+      if (!sender.track) return;
+      const params = sender.getParameters();
+      if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+      const enc = params.encodings[0];
+
+      if (sender.track.kind === 'video') {
+        const peerCount = participantsRef.current.length + 1;
+        if (isScreen) {
+          enc.maxBitrate = overrideBitrate ?? 4_000_000;  // 4 Mbps – screen clarity
+          enc.maxFramerate = 30;
+          enc.scaleResolutionDownBy = 1.0;
+          enc.priority = 'high';
+          enc.networkPriority = 'high';
+          (params as any).degradationPreference = 'maintain-resolution'; // keep sharpness for text
+        } else {
+          enc.maxBitrate = overrideBitrate ?? getAdaptiveCameraBitrate(peerCount, 0);
+          enc.maxFramerate = 30;
+          enc.scaleResolutionDownBy = 1.0;
+          enc.priority = 'high';
+          enc.networkPriority = 'high';
+          (params as any).degradationPreference = 'maintain-framerate'; // keep motion smooth
         }
-      });
-    } catch (e) {
-      console.warn("Bitrate boost failed", e);
-    }
+      }
+
+      if (sender.track.kind === 'audio') {
+        enc.priority = 'high';
+        enc.networkPriority = 'high';
+      }
+
+      try { await sender.setParameters(params); } catch (_) {}
+    });
   }, []);
+
+  // ─── Adaptive bitrate polling via getStats ───────────────────────────────────
+  // Poll every 5 seconds, auto-reduce per-connection bitrate based on peerCount + loss
+  const startAdaptiveBitrate = useCallback(() => {
+    if (adaptiveIntervalRef.current) return;
+    adaptiveIntervalRef.current = setInterval(async () => {
+      const peerCount = participantsRef.current.length + 1;
+      for (const [, item] of connectionsRef.current) {
+        if (!item.mediaCall) continue;
+        const pc = item.mediaCall.peerConnection;
+        if (!pc) continue;
+
+        try {
+          const stats = await pc.getStats();
+          let packetsLost = 0;
+          let totalPackets = 0;
+          stats.forEach((report: any) => {
+            if (report.type === 'inbound-rtp' && report.mediaType === 'video') {
+              packetsLost += report.packetsLost || 0;
+              totalPackets += (report.packetsReceived || 0) + (report.packetsLost || 0);
+            }
+          });
+          const lossRate = totalPackets > 0 ? packetsLost / totalPackets : 0;
+          const targetBitrate = getAdaptiveCameraBitrate(peerCount, lossRate);
+          applyEncodingParams(pc, false, targetBitrate);
+        } catch (_) {}
+      }
+    }, 5000);
+  }, [applyEncodingParams]);
+
+  // ─── Wire ICE connection state → encoding params ────────────────────────────
+  // ICE must reach 'connected'/'completed' before setParameters is valid
+  const wireIceOptimizations = useCallback((call: MediaConnection, isScreen: boolean) => {
+    const pc = call.peerConnection;
+    if (!pc) return;
+
+    applyCodecPreferences(pc);
+
+    const tryApply = () => {
+      const state = pc.iceConnectionState;
+      if (state === 'connected' || state === 'completed') {
+        applyEncodingParams(pc, isScreen);
+      }
+    };
+
+    pc.addEventListener('iceconnectionstatechange', tryApply);
+    // Delayed fallback: ICE may already be connected on fast local networks
+    setTimeout(() => applyEncodingParams(pc, isScreen), 1200);
+  }, [applyEncodingParams]);
 
   const startTimer = useCallback(() => {
     if (timerIntervalRef.current) return;
-    timerIntervalRef.current = setInterval(() => {
-      setTimerSeconds(prev => prev + 1);
-    }, 1000);
+    timerIntervalRef.current = setInterval(() => { setTimerSeconds(prev => prev + 1); }, 1000);
   }, []);
 
   const playSound = useCallback((kind: string) => {
@@ -211,9 +311,7 @@ export function usePeerConnection() {
         osc.start(now);
         osc.stop(now + 0.3);
       }
-    } catch (e) {
-      console.warn("Sound play failed", e);
-    }
+    } catch (_) {}
   }, []);
 
   const localTriggerCelebration = useCallback((kind: string) => {
@@ -242,99 +340,77 @@ export function usePeerConnection() {
   const wireMediaCall = useCallback((call: MediaConnection) => {
     const peerId = call.peer;
     const info = connectionsRef.current.get(peerId);
-    if (info) {
-      info.mediaCall = call;
-    }
+    if (info) info.mediaCall = call;
 
     call.on("stream", (remoteStream) => {
       setParticipants(prev => prev.map(p => p.peerId === peerId ? { ...p, stream: remoteStream } : p));
-      setTimeout(() => boostBitrate(call, false), 1000);
+      wireIceOptimizations(call, false);
     });
 
     call.on("close", () => {
       setParticipants(prev => prev.map(p => p.peerId === peerId ? { ...p, stream: null } : p));
     });
 
-    call.on("error", (err) => {
-      console.error("Media call error", err);
-    });
-  }, [boostBitrate]);
+    call.on("error", (err) => { console.error("Media call error", err); });
+  }, [wireIceOptimizations]);
 
   const wireScreenCall = useCallback((call: MediaConnection) => {
     const peerId = call.peer;
     const info = connectionsRef.current.get(peerId);
-    if (info) {
-      info.screenCall = call;
-    }
+    if (info) info.screenCall = call;
 
     call.on("stream", (remoteStream) => {
-      setParticipants(prev => prev.map(p => p.peerId === peerId ? { ...p, screenStream: remoteStream, screenSharing: true } : p));
-      setTimeout(() => boostBitrate(call, true), 1000);
+      setParticipants(prev => prev.map(p => p.peerId === peerId
+        ? { ...p, screenStream: remoteStream, screenSharing: true } : p));
+      wireIceOptimizations(call, true);
     });
 
     call.on("close", () => {
-      setParticipants(prev => prev.map(p => p.peerId === peerId ? { ...p, screenStream: null, screenSharing: false } : p));
+      setParticipants(prev => prev.map(p => p.peerId === peerId
+        ? { ...p, screenStream: null, screenSharing: false } : p));
     });
 
-    call.on("error", (err) => {
-      console.error("Screen call error", err);
-    });
-  }, [boostBitrate]);
+    call.on("error", (err) => { console.error("Screen call error", err); });
+  }, [wireIceOptimizations]);
 
   const handleData = useCallback((peerId: string, msg: any) => {
     if (msg.type === "hello") {
       const info = connectionsRef.current.get(peerId);
-      if (info) {
-        info.name = msg.name || "Friend";
-      }
+      if (info) info.name = msg.name || "Friend";
 
       setParticipants(prev => {
         const exists = prev.some(p => p.peerId === peerId);
-        if (exists) {
-          return prev.map(p => p.peerId === peerId ? { ...p, name: msg.name || "Friend" } : p);
-        } else {
-          return [...prev, {
-            peerId,
-            name: msg.name || "Friend",
-            stream: null,
-            screenStream: null,
-            micMuted: false,
-            camDisabled: false,
-            screenSharing: false
-          }];
-        }
+        if (exists) return prev.map(p => p.peerId === peerId ? { ...p, name: msg.name || "Friend" } : p);
+        return [...prev, {
+          peerId, name: msg.name || "Friend",
+          stream: null, screenStream: null,
+          micMuted: false, camDisabled: false, screenSharing: false
+        }];
       });
 
       addSystemMsg(`${msg.name || "A friend"} joined the watch party ⚽`);
       startTimer();
+      startAdaptiveBitrate();
 
-      // Coordinate mesh connection if host
+      // Coordinate mesh topology if host
       if (isHostRef.current) {
         const currentPeers = Array.from(connectionsRef.current.entries())
           .filter(([id]) => id !== peerId)
           .map(([id, item]) => ({ peerId: id, name: item.name }));
-        
-        connectionsRef.current.get(peerId)?.dataConn.send({
-          type: "peer-list",
-          peers: currentPeers
-        });
+
+        connectionsRef.current.get(peerId)?.dataConn.send({ type: "peer-list", peers: currentPeers });
 
         connectionsRef.current.forEach((item, id) => {
           if (id !== peerId && item.dataConn.open) {
-            item.dataConn.send({
-              type: "new-peer",
-              peerId,
-              name: msg.name || "Friend"
-            });
+            item.dataConn.send({ type: "new-peer", peerId, name: msg.name || "Friend" });
           }
         });
       }
     } else if (msg.type === "peer-list") {
-      msg.peers.forEach((p: { peerId: string, name: string }) => {
+      msg.peers.forEach((p: { peerId: string; name: string }) => {
         if (peerRef.current && !connectionsRef.current.has(p.peerId)) {
-          const conn = peerRef.current.connect(p.peerId, { reliable: true });
+          const conn = peerRef.current.connect(p.peerId, { reliable: true, serialization: "json" });
           wireDataConnection(conn, p.name);
-          
           if (localStreamRef.current) {
             const call = peerRef.current.call(p.peerId, localStreamRef.current);
             wireMediaCall(call);
@@ -345,13 +421,9 @@ export function usePeerConnection() {
       setParticipants(prev => {
         if (prev.some(p => p.peerId === msg.peerId)) return prev;
         return [...prev, {
-          peerId: msg.peerId,
-          name: msg.name || "Friend",
-          stream: null,
-          screenStream: null,
-          micMuted: false,
-          camDisabled: false,
-          screenSharing: false
+          peerId: msg.peerId, name: msg.name || "Friend",
+          stream: null, screenStream: null,
+          micMuted: false, camDisabled: false, screenSharing: false
         }];
       });
     } else if (msg.type === "chat") {
@@ -361,20 +433,23 @@ export function usePeerConnection() {
       addSystemMsg(`${msg.name || "Friend"} hit ${msg.kind.toUpperCase()}!`);
     } else if (msg.type === "screen-share-state") {
       setParticipants(prev => prev.map(p => p.peerId === peerId ? { ...p, screenSharing: msg.active } : p));
-      addSystemMsg(`${msg.active ? (msg.name || "Friend") + " started screen sharing." : (msg.name || "Friend") + " stopped screen sharing."}`);
+      addSystemMsg(msg.active
+        ? `${msg.name || "Friend"} started screen sharing.`
+        : `${msg.name || "Friend"} stopped screen sharing.`);
     } else if (msg.type === "state-update") {
-      setParticipants(prev => prev.map(p => p.peerId === peerId ? { ...p, micMuted: msg.micMuted, camDisabled: msg.camDisabled } : p));
+      setParticipants(prev => prev.map(p => p.peerId === peerId
+        ? { ...p, micMuted: msg.micMuted, camDisabled: msg.camDisabled } : p));
     } else if (msg.type === "host-ended") {
       alert("The host has ended the watch party.");
       cleanup();
     }
-  }, [addSystemMsg, addChatMsg, localTriggerCelebration, startTimer, cleanup, wireMediaCall]);
+  }, [addSystemMsg, addChatMsg, localTriggerCelebration, startTimer, startAdaptiveBitrate, cleanup, wireMediaCall]);
 
-  const wireDataConnection = useCallback((conn: DataConnection, initialName: string = "") => {
+  const wireDataConnection = useCallback((conn: DataConnection, initialName = "") => {
     if (!connectionsRef.current.has(conn.peer)) {
       connectionsRef.current.set(conn.peer, { dataConn: conn, name: initialName });
     }
-    
+
     conn.on("open", () => {
       setIsInRoom(true);
       setConnectionStatus('connected');
@@ -384,39 +459,48 @@ export function usePeerConnection() {
       }
     });
 
-    conn.on("data", (data) => {
-      handleData(conn.peer, data);
-    });
-
-    conn.on("close", () => {
-      handlePeerDisconnect(conn.peer);
-    });
-
+    conn.on("data", (data) => { handleData(conn.peer, data); });
+    conn.on("close", () => { handlePeerDisconnect(conn.peer); });
     conn.on("error", (err) => {
       console.error("Data connection error", err);
       handlePeerDisconnect(conn.peer);
     });
   }, [handleData, handlePeerDisconnect]);
 
+  // ─── Local media setup with contentHint and latency-optimized constraints ────
   const setupLocalMedia = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        video: {
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          frameRate: { ideal: 30, max: 30 },
+          facingMode: "user",
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,   // Mono for voice — saves bandwidth
+          sampleRate: 48000, // Opus codec sweet spot
+        }
       });
+
+      // Content hints guide browser encoder for better quality per bitrate
+      stream.getVideoTracks().forEach(track => { (track as any).contentHint = 'motion'; });
+      stream.getAudioTracks().forEach(track => { (track as any).contentHint = 'speech'; });
+
       setLocalStream(stream);
       return stream;
     } catch (err) {
-      console.warn("Standard resolution getUserMedia failed, attempting generic fallback:", err);
+      console.warn("HD getUserMedia failed, trying fallback:", err);
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true
-        });
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        stream.getVideoTracks().forEach(t => { (t as any).contentHint = 'motion'; });
+        stream.getAudioTracks().forEach(t => { (t as any).contentHint = 'speech'; });
         setLocalStream(stream);
         return stream;
       } catch (err2) {
-        console.error("All getUserMedia attempts failed:", err2);
         throw err2;
       }
     }
@@ -433,7 +517,7 @@ export function usePeerConnection() {
 
     try {
       const stream = await setupLocalMedia();
-      const newPeer = new Peer(ROOM_PREFIX + code + "-HOST");
+      const newPeer = new Peer(ROOM_PREFIX + code + "-HOST", PEER_CONFIG);
       peerRef.current = newPeer;
 
       newPeer.on("open", () => {
@@ -441,12 +525,10 @@ export function usePeerConnection() {
         setIsInRoom(true);
       });
 
-      newPeer.on("connection", (conn) => {
-        wireDataConnection(conn);
-      });
+      newPeer.on("connection", (conn) => { wireDataConnection(conn); });
 
       newPeer.on("call", (call) => {
-        if (call.metadata && call.metadata.type === "screen-share") {
+        if ((call.metadata as any)?.type === "screen-share") {
           call.answer();
           wireScreenCall(call);
         } else {
@@ -457,11 +539,11 @@ export function usePeerConnection() {
 
       newPeer.on("error", (err) => {
         console.error("Peer error:", err);
-        setErrorMsg("Connection error setup failed.");
+        setErrorMsg("Connection error. Please try again.");
         setConnectionStatus('error');
       });
     } catch (err) {
-      console.error("Room creation media setup failed:", err);
+      console.error("Room creation failed:", err);
       setErrorMsg("Failed to access camera/mic.");
       setConnectionStatus('error');
     }
@@ -477,24 +559,21 @@ export function usePeerConnection() {
 
     try {
       const stream = await setupLocalMedia();
-      const newPeer = new Peer();
+      const newPeer = new Peer(PEER_CONFIG);
       peerRef.current = newPeer;
 
       newPeer.on("open", () => {
         const hostId = ROOM_PREFIX + cleanCode + "-HOST";
-        const conn = newPeer.connect(hostId, { reliable: true });
+        const conn = newPeer.connect(hostId, { reliable: true, serialization: "json" });
         wireDataConnection(conn, "Host");
-
         const call = newPeer.call(hostId, stream);
         wireMediaCall(call);
       });
 
-      newPeer.on("connection", (conn) => {
-        wireDataConnection(conn);
-      });
+      newPeer.on("connection", (conn) => { wireDataConnection(conn); });
 
       newPeer.on("call", (call) => {
-        if (call.metadata && call.metadata.type === "screen-share") {
+        if ((call.metadata as any)?.type === "screen-share") {
           call.answer();
           wireScreenCall(call);
         } else {
@@ -518,69 +597,45 @@ export function usePeerConnection() {
   const sendChatMessage = useCallback((text: string) => {
     addChatMsg(myNameRef.current, text, true);
     connectionsRef.current.forEach(item => {
-      if (item.dataConn.open) {
-        item.dataConn.send({ type: "chat", name: myNameRef.current, text });
-      }
+      if (item.dataConn.open) item.dataConn.send({ type: "chat", name: myNameRef.current, text });
     });
   }, [addChatMsg]);
 
   const triggerCelebration = useCallback((kind: string) => {
     localTriggerCelebration(kind);
     connectionsRef.current.forEach(item => {
-      if (item.dataConn.open) {
-        item.dataConn.send({ type: "celebrate", name: myNameRef.current, kind });
-      }
+      if (item.dataConn.open) item.dataConn.send({ type: "celebrate", name: myNameRef.current, kind });
     });
   }, [localTriggerCelebration]);
 
   const toggleMic = useCallback(() => {
-    const nextState = !micMuted;
-    setMicMuted(nextState);
-    if (localStreamRef.current) {
-      localStreamRef.current.getAudioTracks().forEach(track => {
-        track.enabled = !nextState;
-      });
-    }
+    const next = !micMuted;
+    setMicMuted(next);
+    localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !next; });
     connectionsRef.current.forEach(item => {
-      if (item.dataConn.open) {
-        item.dataConn.send({ type: "state-update", name: myNameRef.current, micMuted: nextState, camDisabled });
-      }
+      if (item.dataConn.open) item.dataConn.send({ type: "state-update", name: myNameRef.current, micMuted: next, camDisabled });
     });
   }, [micMuted, camDisabled]);
 
   const toggleCam = useCallback(() => {
-    const nextState = !camDisabled;
-    setCamDisabled(nextState);
-    if (localStreamRef.current) {
-      localStreamRef.current.getVideoTracks().forEach(track => {
-        track.enabled = !nextState;
-      });
-    }
+    const next = !camDisabled;
+    setCamDisabled(next);
+    localStreamRef.current?.getVideoTracks().forEach(t => { t.enabled = !next; });
     connectionsRef.current.forEach(item => {
-      if (item.dataConn.open) {
-        item.dataConn.send({ type: "state-update", name: myNameRef.current, micMuted, camDisabled: nextState });
-      }
+      if (item.dataConn.open) item.dataConn.send({ type: "state-update", name: myNameRef.current, micMuted, camDisabled: next });
     });
   }, [micMuted, camDisabled]);
 
   const revertToCamera = useCallback(() => {
     connectionsRef.current.forEach(item => {
-      if (item.screenCall) {
-        item.screenCall.close();
-        item.screenCall = undefined;
-      }
+      if (item.screenCall) { item.screenCall.close(); item.screenCall = undefined; }
     });
-    if (localScreenStreamRef.current) {
-      localScreenStreamRef.current.getTracks().forEach(t => t.stop());
-    }
+    localScreenStreamRef.current?.getTracks().forEach(t => t.stop());
     setLocalScreenStream(null);
     setScreenSharing(false);
     addSystemMsg("Screen share ended.");
-
     connectionsRef.current.forEach(item => {
-      if (item.dataConn.open) {
-        item.dataConn.send({ type: "screen-share-state", name: myNameRef.current, active: false });
-      }
+      if (item.dataConn.open) item.dataConn.send({ type: "screen-share-state", name: myNameRef.current, active: false });
     });
   }, [addSystemMsg]);
 
@@ -589,16 +644,20 @@ export function usePeerConnection() {
       try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
           video: {
-            width: { ideal: 1280, max: 1920 },
-            height: { ideal: 720, max: 1080 },
-            frameRate: { ideal: 30, max: 30 }
+            width: { ideal: 1920, max: 1920 },
+            height: { ideal: 1080, max: 1080 },
+            frameRate: { ideal: 30, max: 30 },
           },
           audio: {
             echoCancellation: false,
             noiseSuppression: false,
-            autoGainControl: false
+            autoGainControl: false,
           }
         });
+
+        // Content hint: 'detail' → encoder prioritizes resolution/text clarity
+        screenStream.getVideoTracks().forEach(t => { (t as any).contentHint = 'detail'; });
+
         setLocalScreenStream(screenStream);
         setScreenSharing(true);
         addSystemMsg("Screen share started.");
@@ -609,36 +668,26 @@ export function usePeerConnection() {
               metadata: { type: "screen-share" }
             });
             item.screenCall = call;
-            setTimeout(() => boostBitrate(call, true), 1000);
+            wireIceOptimizations(call, true);
           });
         }
 
         connectionsRef.current.forEach(item => {
-          if (item.dataConn.open) {
-            item.dataConn.send({ type: "screen-share-state", name: myNameRef.current, active: true });
-          }
+          if (item.dataConn.open) item.dataConn.send({ type: "screen-share-state", name: myNameRef.current, active: true });
         });
 
-        const screenTrack = screenStream.getVideoTracks()[0];
-        screenTrack.onended = () => {
-          revertToCamera();
-        };
+        screenStream.getVideoTracks()[0].onended = () => { revertToCamera(); };
       } catch (err) {
-        console.warn("Screen share cancelled or failed", err);
+        console.warn("Screen share cancelled or failed:", err);
       }
     } else {
       revertToCamera();
     }
-  }, [screenSharing, revertToCamera, addSystemMsg, boostBitrate]);
-
-  // Derived properties for backwards compatibility
-  const remoteScreenSharing = participants.some(p => p.screenSharing);
-  const remoteScreenStream = participants.find(p => p.screenSharing)?.screenStream || null;
-  const friendName = participants.map(p => p.name).join(", ") || "Friend";
+  }, [screenSharing, revertToCamera, addSystemMsg, wireIceOptimizations]);
 
   return {
     myName,
-    friendName,
+    friendName: participants.map(p => p.name).join(", ") || "Friend",
     roomCode,
     isHost,
     isInRoom,
@@ -650,8 +699,8 @@ export function usePeerConnection() {
     micMuted,
     camDisabled,
     screenSharing,
-    remoteScreenSharing,
-    remoteScreenStream,
+    remoteScreenSharing: participants.some(p => p.screenSharing),
+    remoteScreenStream: participants.find(p => p.screenSharing)?.screenStream || null,
     chatMessages,
     activeCelebration,
     timerSeconds,
@@ -662,6 +711,6 @@ export function usePeerConnection() {
     toggleMic,
     toggleCam,
     toggleScreenShare,
-    leaveRoom: cleanup
+    leaveRoom: cleanup,
   };
 }
