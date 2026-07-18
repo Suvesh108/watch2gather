@@ -95,7 +95,7 @@ export const Lobby: React.FC<LobbyProps> = ({
           <input
             type="text"
             id="nameInput"
-            placeholder="e.g. Suvesh"
+            placeholder="e.g. Alex"
             maxLength={20}
             value={username}
             onChange={(e) => {
