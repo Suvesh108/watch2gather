@@ -45,7 +45,7 @@ export const Lobby: React.FC<LobbyProps> = ({
   const handleJoin = async () => {
     if (!username.trim()) {
       setValidationError('Please enter your name first.');
-      const input = document.getElementById('nameInput');
+      const input = document.getElementById('nameInputJoin');
       if (input) input.focus();
       return;
     }
@@ -119,57 +119,56 @@ export const Lobby: React.FC<LobbyProps> = ({
           </p>
         </div>
 
-        {/* Input Form Fields */}
-        <div className="mt-6 flex flex-col gap-4">
-          <div className="field">
-            <label htmlFor="nameInput" className="block text-[10px] font-bold tracking-wider uppercase text-dim mb-1.5 select-none">
-              Your Username
-            </label>
-            <input
-              type="text"
-              id="nameInput"
-              placeholder="e.g. Alex"
-              maxLength={15}
-              value={username}
-              onChange={(e) => {
-                setUsername(e.target.value);
-                if (validationError) setValidationError('');
-              }}
-              disabled={isLoading}
-              className="w-full bg-navy-950/80 border border-navy-700/80 rounded-xl py-3 px-4 text-white text-sm outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition duration-150 placeholder-dim/40"
-            />
-          </div>
+        {/* Tab Selectors */}
+        <div className="tabs flex bg-navy-950/85 p-1 rounded-xl border border-navy-805/80 select-none mt-6">
+          <button
+            onClick={() => setActiveTab('create')}
+            disabled={isLoading}
+            className={`flex-1 text-center py-2 rounded-lg cursor-pointer text-xs font-bold transition-all duration-150 ${
+              activeTab === 'create'
+                ? 'bg-navy-800 text-gold shadow-md'
+                : 'text-dim hover:text-white'
+            }`}
+          >
+            Host Party
+          </button>
+          <button
+            onClick={() => setActiveTab('join')}
+            disabled={isLoading}
+            className={`flex-1 text-center py-2 rounded-lg cursor-pointer text-xs font-bold transition-all duration-150 ${
+              activeTab === 'join'
+                ? 'bg-navy-800 text-gold shadow-md'
+                : 'text-dim hover:text-white'
+            }`}
+          >
+            Join Party
+          </button>
+        </div>
 
-          {/* Tab Selectors */}
-          <div className="tabs flex bg-navy-950/85 p-1 rounded-xl border border-navy-800/80 select-none">
-            <button
-              onClick={() => setActiveTab('create')}
-              disabled={isLoading}
-              className={`flex-1 text-center py-2 rounded-lg cursor-pointer text-xs font-bold transition-all duration-150 ${
-                activeTab === 'create'
-                  ? 'bg-navy-800 text-gold shadow-md'
-                  : 'text-dim hover:text-white'
-              }`}
-            >
-              Host Party
-            </button>
-            <button
-              onClick={() => setActiveTab('join')}
-              disabled={isLoading}
-              className={`flex-1 text-center py-2 rounded-lg cursor-pointer text-xs font-bold transition-all duration-150 ${
-                activeTab === 'join'
-                  ? 'bg-navy-800 text-gold shadow-md'
-                  : 'text-dim hover:text-white'
-              }`}
-            >
-              Join Party
-            </button>
-          </div>
-
-          {/* Action Panels */}
+        {/* Action Panels */}
+        <div className="mt-4">
           {activeTab === 'create' ? (
-            <div className="tab-panel animate-fade-in">
-              <p className="text-[11px] text-dim mb-3.5 leading-normal select-none">
+            <div className="tab-panel animate-fade-in flex flex-col gap-4">
+              <div className="field">
+                <label htmlFor="nameInput" className="block text-[10px] font-bold tracking-wider uppercase text-dim mb-1.5 select-none">
+                  Your Username
+                </label>
+                <input
+                  type="text"
+                  id="nameInput"
+                  placeholder="e.g. Alex"
+                  maxLength={15}
+                  value={username}
+                  onChange={(e) => {
+                    setUsername(e.target.value);
+                    if (validationError) setValidationError('');
+                  }}
+                  disabled={isLoading}
+                  className="w-full bg-navy-950/80 border border-navy-700/80 rounded-xl py-3 px-4 text-white text-sm outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition duration-150 placeholder-dim/40"
+                />
+              </div>
+
+              <p className="text-[11px] text-dim leading-normal select-none">
                 Instantly host a party. Send the room code or invite link to up to 20 friends.
               </p>
               
@@ -187,7 +186,7 @@ export const Lobby: React.FC<LobbyProps> = ({
               </button>
 
               {roomCode && (
-                <div className="share-code mt-4 border border-dashed border-gold/40 rounded-2xl p-4 text-center bg-navy-950/70 backdrop-blur-md animate-scale-in">
+                <div className="share-code mt-1 border border-dashed border-gold/40 rounded-2xl p-4 text-center bg-navy-950/70 backdrop-blur-md animate-scale-in">
                   <div className="text-[9px] uppercase tracking-widest text-dim font-bold mb-1">Room Code</div>
                   <div className="code font-teko text-[44px] tracking-[0.25em] text-gold-bright leading-none select-all">
                     {roomCode}
@@ -216,6 +215,25 @@ export const Lobby: React.FC<LobbyProps> = ({
             </div>
           ) : (
             <div className="tab-panel animate-fade-in flex flex-col gap-4">
+              <div className="field">
+                <label htmlFor="nameInputJoin" className="block text-[10px] font-bold tracking-wider uppercase text-dim mb-1.5 select-none">
+                  Your Username
+                </label>
+                <input
+                  type="text"
+                  id="nameInputJoin"
+                  placeholder="e.g. Alex"
+                  maxLength={15}
+                  value={username}
+                  onChange={(e) => {
+                    setUsername(e.target.value);
+                    if (validationError) setValidationError('');
+                  }}
+                  disabled={isLoading}
+                  className="w-full bg-navy-950/80 border border-navy-700/80 rounded-xl py-3 px-4 text-white text-sm outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition duration-150 placeholder-dim/40"
+                />
+              </div>
+
               <div className="field">
                 <label htmlFor="codeInput" className="block text-[10px] font-bold tracking-wider uppercase text-dim mb-1.5 select-none">
                   Party Code

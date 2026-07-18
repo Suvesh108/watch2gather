@@ -159,3 +159,13 @@ body::before {
 .gold-gradient-btn:hover {
   background: linear-gradient(135deg, #ffe57f 0%, var(--gold-bright) 100%);
 }
+
+/* Fix browser autofill styling overriding dark mode input colors */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--white) !important;
+  -webkit-box-shadow: 0 0 0px 1000px var(--navy-950) inset !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
