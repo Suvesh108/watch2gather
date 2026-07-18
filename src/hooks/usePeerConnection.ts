@@ -387,7 +387,7 @@ export function usePeerConnection() {
       msg.peers.forEach((p: { peerId: string; name: string }) => {
         if (peerRef.current && !connectionsRef.current.has(p.peerId)) {
           const conn = peerRef.current.connect(p.peerId, { reliable: true, serialization: "json" });
-          wireDataConnection(conn, p.name);
+          wireDataConnection(conn, p.name, true);
           if (localStreamRef.current) {
             const call = peerRef.current.call(p.peerId, localStreamRef.current);
             wireMediaCall(call);
@@ -431,7 +431,29 @@ export function usePeerConnection() {
     if (ch.open) ch.send(msg);
   }, []);
 
-  const wireDataConnection = useCallback((conn: DataConnection, initialName = "") => {
+  const wireDataConnection = useCallback((conn: DataConnection, initialName = "", isInitiator = false) => {
+    const isRt = conn.label === "rt";
+
+    if (isRt) {
+      const entry = connectionsRef.current.get(conn.peer);
+      if (entry) {
+        entry.rtDataConn = conn;
+      } else {
+        connectionsRef.current.set(conn.peer, {
+          dataConn: conn,
+          rtDataConn: conn,
+          name: initialName || "Friend"
+        });
+      }
+      conn.on("data", (data) => { handleData(conn.peer, data); });
+      conn.on("close", () => { handlePeerDisconnect(conn.peer); });
+      conn.on("error", (err) => {
+        console.error("RT Data connection error", err);
+        handlePeerDisconnect(conn.peer);
+      });
+      return;
+    }
+
     if (!connectionsRef.current.has(conn.peer)) {
       connectionsRef.current.set(conn.peer, { dataConn: conn, name: initialName });
     } else {
@@ -446,9 +468,7 @@ export function usePeerConnection() {
         conn.send({ type: "screen-share-state", name: myNameRef.current, active: true });
       }
 
-      // Open a second unreliable (UDP-like) channel for chat/state/celebrate
-      // maxRetransmits:0 = no SCTP retransmit, no HOL blocking, minimum latency
-      if (peerRef.current) {
+      if (isInitiator && peerRef.current) {
         try {
           const rtConn = peerRef.current.connect(conn.peer, {
             reliable: false,
@@ -460,6 +480,8 @@ export function usePeerConnection() {
             if (entry) entry.rtDataConn = rtConn;
           });
           rtConn.on("data", (data) => { handleData(conn.peer, data); });
+          rtConn.on("close", () => { handlePeerDisconnect(conn.peer); });
+          rtConn.on("error", () => { handlePeerDisconnect(conn.peer); });
         } catch (_) {}
       }
     });
@@ -570,7 +592,7 @@ export function usePeerConnection() {
       newPeer.on("open", () => {
         const hostId = ROOM_PREFIX + cleanCode + "-HOST";
         const conn = newPeer.connect(hostId, { reliable: true, serialization: "json" });
-        wireDataConnection(conn, "Host");
+        wireDataConnection(conn, "Host", true);
         const call = newPeer.call(hostId, stream);
         wireMediaCall(call);
       });
