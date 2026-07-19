@@ -21,6 +21,9 @@ export const Lobby: React.FC<LobbyProps> = ({
   const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
   const [copied, setCopied] = useState(false);
   const [validationError, setValidationError] = useState('');
+  const [iframeLinkInput, setIframeLinkInput] = useState(() => {
+    return localStorage.getItem('watch2gather_custom_stream_link') || '';
+  });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -31,12 +34,25 @@ export const Lobby: React.FC<LobbyProps> = ({
     }
   }, []);
 
+  const saveStreamLink = (rawInput: string) => {
+    if (!rawInput.trim()) return;
+    let parsedUrl = rawInput.trim();
+    const srcMatch = rawInput.match(/src=["']([^"']+)["']/i);
+    if (srcMatch) {
+      parsedUrl = srcMatch[1];
+    }
+    localStorage.setItem('watch2gather_custom_stream_link', parsedUrl);
+  };
+
   const handleCreate = async () => {
     if (!username.trim()) {
       setValidationError('Please enter your name first.');
       const input = document.getElementById('nameInput');
       if (input) input.focus();
       return;
+    }
+    if (iframeLinkInput.trim()) {
+      saveStreamLink(iframeLinkInput);
     }
     setValidationError('');
     await createRoom(username);
@@ -54,6 +70,9 @@ export const Lobby: React.FC<LobbyProps> = ({
       const input = document.getElementById('codeInput');
       if (input) input.focus();
       return;
+    }
+    if (iframeLinkInput.trim()) {
+      saveStreamLink(iframeLinkInput);
     }
     setValidationError('');
     await joinRoom(username, codeInput);
@@ -159,6 +178,28 @@ export const Lobby: React.FC<LobbyProps> = ({
                 />
               </div>
 
+              {/* Add Stream / iFrame Link Section */}
+              <div className="field flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="iframeInputCreate" className="text-[11px] font-bold tracking-wide uppercase text-gold select-none">
+                    Add Stream / iFrame Link
+                  </label>
+                  <span className="text-[9px] text-dim font-medium">(Optional)</span>
+                </div>
+                <input
+                  type="text"
+                  id="iframeInputCreate"
+                  placeholder='Paste <iframe src="..."> or URL'
+                  value={iframeLinkInput}
+                  onChange={(e) => {
+                    setIframeLinkInput(e.target.value);
+                    saveStreamLink(e.target.value);
+                  }}
+                  disabled={isLoading}
+                  className="w-full bg-navy-950 border border-gold/40 focus:border-gold rounded-lg py-2.5 px-3.5 text-white text-xs outline-none transition duration-150 placeholder-[#5f6368]/65"
+                />
+              </div>
+
               <button
                 onClick={handleCreate}
                 disabled={isLoading}
@@ -234,6 +275,28 @@ export const Lobby: React.FC<LobbyProps> = ({
                   onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
                   disabled={isLoading}
                   className="w-full bg-navy-950 border border-[#5f6368]/60 rounded-lg py-2.5 px-3.5 text-white text-sm outline-none focus:border-gold focus:ring-1 focus:ring-gold/30 transition duration-150 placeholder-[#5f6368]/65 text-center font-mono tracking-widest uppercase"
+                />
+              </div>
+
+              {/* Add Stream / iFrame Link Section in Join Form */}
+              <div className="field flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="iframeInputJoin" className="text-[11px] font-bold tracking-wide uppercase text-gold select-none">
+                    Add Stream / iFrame Link
+                  </label>
+                  <span className="text-[9px] text-dim font-medium">(Optional)</span>
+                </div>
+                <input
+                  type="text"
+                  id="iframeInputJoin"
+                  placeholder='Paste <iframe src="..."> or URL'
+                  value={iframeLinkInput}
+                  onChange={(e) => {
+                    setIframeLinkInput(e.target.value);
+                    saveStreamLink(e.target.value);
+                  }}
+                  disabled={isLoading}
+                  className="w-full bg-navy-950 border border-gold/40 focus:border-gold rounded-lg py-2.5 px-3.5 text-white text-xs outline-none transition duration-150 placeholder-[#5f6368]/65"
                 />
               </div>
               
