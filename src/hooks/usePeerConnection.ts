@@ -54,22 +54,17 @@ export interface Participant {
 
 const ROOM_PREFIX = "matchday-wc26-";
 
+const SIGNALING_HOST = import.meta.env.VITE_SIGNALING_HOST || undefined;
+const SIGNALING_PORT = import.meta.env.VITE_SIGNALING_PORT ? parseInt(import.meta.env.VITE_SIGNALING_PORT, 10) : undefined;
+const SIGNALING_PATH = import.meta.env.VITE_SIGNALING_PATH || '/';
+const SIGNALING_SECURE = import.meta.env.VITE_SIGNALING_SECURE !== 'false';
+
 // ─── ICE Configuration ───────────────────────────────────────────────────────
-// Multiple STUN servers + public TURN relay for NAT traversal on all networks
+// Slimmed down STUN servers list to minimize WebRTC handshake time
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-  { urls: "stun:stun2.l.google.com:19302" },
-  { urls: "stun:stun3.l.google.com:19302" },
-  { urls: "stun:stun4.l.google.com:19302" },
   { urls: "stun:stun.cloudflare.com:3478" },
-  { urls: "stun:stun.nextcloud.com:443" },
   // Public free TURN relay as fallback for symmetric NAT / corporate firewalls
-  {
-    urls: "turn:openrelay.metered.ca:80",
-    username: "openrelayproject",
-    credential: "openrelayproject",
-  },
   {
     urls: "turn:openrelay.metered.ca:443",
     username: "openrelayproject",
@@ -84,12 +79,18 @@ const ICE_SERVERS: RTCIceServer[] = [
 
 const PEER_CONFIG = {
   debug: 0,
+  ...(SIGNALING_HOST ? {
+    host: SIGNALING_HOST,
+    port: SIGNALING_PORT,
+    path: SIGNALING_PATH,
+    secure: SIGNALING_SECURE,
+  } : {}),
   config: {
     iceServers: ICE_SERVERS,
     iceTransportPolicy: "all" as RTCIceTransportPolicy,
     bundlePolicy: "max-bundle" as RTCBundlePolicy, // Audio+video+data on ONE transport → fewer round-trips
     rtcpMuxPolicy: "require" as RTCRtcpMuxPolicy,  // Mux RTCP+RTP on same port
-    iceCandidatePoolSize: 10,                       // Pre-gather ICE candidates to cut initial connect time
+    iceCandidatePoolSize: 4,                       // Pre-gather fewer ICE candidates for faster setup
   },
 };
 
@@ -120,6 +121,7 @@ function minimizePlayoutDelay(pc: RTCPeerConnection) {
 
 export function usePeerConnection() {
   const [myName, setMyName] = useState("");
+  const [iceServers, setIceServers] = useState<RTCIceServer[]>(ICE_SERVERS);
   const [roomCode, setRoomCode] = useState("");
   const [isHost, setIsHost] = useState(false);
   const [isInRoom, setIsInRoom] = useState(false);
@@ -170,6 +172,23 @@ export function usePeerConnection() {
   useEffect(() => { localScreenStreamRef.current = localScreenStream; }, [localScreenStream]);
   useEffect(() => { localStreamRef.current = localStream; }, [localStream]);
   useEffect(() => { participantsRef.current = participants; }, [participants]);
+
+  useEffect(() => {
+    async function fetchTurn() {
+      try {
+        const res = await fetch('/api/turn');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.iceServers) {
+            setIceServers(data.iceServers);
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch custom TURN credentials, using default STUN/TURN servers:", err);
+      }
+    }
+    fetchTurn();
+  }, []);
 
   // Mesh connection registry — each peer has a reliable signaling channel
   // and a separate unreliable channel for low-priority real-time messages
@@ -651,7 +670,13 @@ export function usePeerConnection() {
 
     try {
       await setupLocalMedia();
-      const newPeer = new Peer(ROOM_PREFIX + code + "-HOST", PEER_CONFIG);
+      const newPeer = new Peer(ROOM_PREFIX + code + "-HOST", {
+        ...PEER_CONFIG,
+        config: {
+          ...PEER_CONFIG.config,
+          iceServers: iceServers,
+        }
+      });
       peerRef.current = newPeer;
 
       newPeer.on("disconnected", () => {
@@ -687,7 +712,7 @@ export function usePeerConnection() {
       setErrorMsg("Failed to access camera/mic.");
       setConnectionStatus('error');
     }
-  }, [setupLocalMedia, wireDataConnection, wireScreenCall, wireMediaCall]);
+  }, [setupLocalMedia, wireDataConnection, wireScreenCall, wireMediaCall, iceServers]);
 
   const joinRoom = useCallback(async (username: string, code: string) => {
     const cleanCode = code.trim().toUpperCase();
@@ -699,7 +724,13 @@ export function usePeerConnection() {
 
     try {
       await setupLocalMedia();
-      const newPeer = new Peer(PEER_CONFIG);
+      const newPeer = new Peer({
+        ...PEER_CONFIG,
+        config: {
+          ...PEER_CONFIG.config,
+          iceServers: iceServers,
+        }
+      });
       peerRef.current = newPeer;
 
       newPeer.on("disconnected", () => {
@@ -735,7 +766,7 @@ export function usePeerConnection() {
       setErrorMsg("Camera access needed to join party.");
       setConnectionStatus('error');
     }
-  }, [setupLocalMedia, wireDataConnection, wireMediaCall, wireScreenCall]);
+  }, [setupLocalMedia, wireDataConnection, wireMediaCall, wireScreenCall, iceServers]);
 
   const sendChatMessage = useCallback((text: string) => {
     addChatMsg(myNameRef.current, text, true);

@@ -1,0 +1,13 @@
+{
+  "name": "watch2gether-signaling",
+  "version": "1.0.0",
+  "description": "Custom PeerJS signaling server for watch2gether",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "peer": "^1.0.2"
+  },
+  "private": true
+}
