@@ -30,18 +30,57 @@ export const VideoTile: React.FC<VideoTileProps> = ({
 
   useEffect(() => {
     const video = videoRef.current;
-    if (video) {
-      if (stream) {
-        video.srcObject = stream;
-        video.play().catch(err => {
-          console.warn("Autoplay block or playback error:", err);
-          setIsPaused(true);
-        });
-      } else {
-        video.srcObject = null;
-      }
+    if (!video) return;
+
+    if (!stream) {
+      video.srcObject = null;
+      return;
     }
-  }, [stream]);
+
+    video.srcObject = stream;
+    video.play().catch(err => {
+      console.warn("Autoplay block or playback error:", err);
+      setIsPaused(true);
+    });
+
+    const resetPipeline = () => {
+      console.log(`Resetting video pipeline for ${label} to recover drift...`);
+      const isMuted = video.muted;
+      video.pause();
+      video.srcObject = null;
+      video.load();
+      video.srcObject = stream;
+      video.muted = isMuted;
+      video.play().then(() => setIsPaused(false)).catch(err => console.warn("Failed to replay after reset:", err));
+    };
+
+    // Tab visibility change observer (Safari/Chrome tab throttling recovery)
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        setTimeout(resetPipeline, 200);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    // Playback delay monitor
+    const monitorInterval = setInterval(() => {
+      if (video.paused || !video.buffered.length) return;
+      
+      const bufferedEnd = video.buffered.end(video.buffered.length - 1);
+      const currentTime = video.currentTime;
+      const drift = bufferedEnd - currentTime;
+      
+      if (drift > 0.7) {
+        console.warn(`Video playout drift detected on ${label}: ${drift.toFixed(2)}s. Snapping to live edge.`);
+        resetPipeline();
+      }
+    }, 2000);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      clearInterval(monitorInterval);
+    };
+  }, [stream, label]);
 
   const getInitials = (nameStr: string) => {
     const cleanStr = nameStr.replace(/\s*\(you\)\s*|\[Shared Screen\]/gi, '').trim();

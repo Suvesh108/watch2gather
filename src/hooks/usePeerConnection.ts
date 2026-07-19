@@ -2,11 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Peer from 'peerjs';
 import type { DataConnection, MediaConnection } from 'peerjs';
 
-// ─── SDP Munging for Audio FEC & DTX ─────────────────────────────────────────
+// ─── SDP Munging for Audio FEC & DTX + Video H.264/VP8 Codec Prioritization ──
 const originalSetLocalDescription = RTCPeerConnection.prototype.setLocalDescription;
 RTCPeerConnection.prototype.setLocalDescription = function(description?: RTCLocalSessionDescriptionInit) {
   if (description && description.type !== 'rollback' && description.sdp) {
     let sdp = description.sdp;
+    
+    // 1. Audio optimization (Opus FEC & DTX)
     const opusMatch = sdp.match(/a=rtpmap:(\d+) opus\/48000\/2/i);
     if (opusMatch) {
       const pt = opusMatch[1];
@@ -22,6 +24,48 @@ RTCPeerConnection.prototype.setLocalDescription = function(description?: RTCLoca
         sdp = sdp.replace(new RegExp(`(a=rtpmap:${pt} opus\\/48000\\/2\\r?\\n)`), `$1a=fmtp:${pt} useinbandfec=1;usedtx=1\r\n`);
       }
     }
+
+    // 2. Video optimization (Prioritize hardware H.264 and VP8 over AV1/VP9)
+    let lines = sdp.split('\r\n');
+    let videoIdx = lines.findIndex(line => line.startsWith('m=video'));
+    if (videoIdx !== -1) {
+      const codecPayloads = { H264: [] as string[], VP8: [] as string[] };
+      const rtpMapRegex = /^a=rtpmap:(\d+)\s+([\w-]+)\/\d+/i;
+
+      lines.forEach(line => {
+        const match = line.match(rtpMapRegex);
+        if (match) {
+          const payloadType = match[1];
+          const codecName = match[2].toUpperCase();
+          if (codecName === 'H264') {
+            codecPayloads.H264.push(payloadType);
+          } else if (codecName === 'VP8') {
+            codecPayloads.VP8.push(payloadType);
+          }
+        }
+      });
+
+      const mVideoLine = lines[videoIdx];
+      const parts = mVideoLine.split(' ');
+      const header = parts.slice(0, 3); // "m=video", port, profile
+      const originalPayloads = parts.slice(3);
+
+      const h264List = codecPayloads.H264.filter(pt => originalPayloads.includes(pt));
+      const vp8List = codecPayloads.VP8.filter(pt => originalPayloads.includes(pt));
+      const remaining = originalPayloads.filter(pt => !h264List.includes(pt) && !vp8List.includes(pt));
+
+      const sortedPayloads = [...h264List, ...vp8List, ...remaining];
+      lines[videoIdx] = `${header.join(' ')} ${sortedPayloads.join(' ')}`;
+      sdp = lines.join('\r\n');
+    }
+
+    // 3. Disable cross-track A/V sync delay by separating stream IDs
+    let trackCounter = 0;
+    sdp = sdp.replace(/a=msid:(\S+)\s+(\S+)/g, (_, _streamId, trackId) => {
+      trackCounter++;
+      return `a=msid:independent-stream-${trackCounter} ${trackId}`;
+    });
+
     const modifiedDescription = { type: description.type, sdp };
     return (originalSetLocalDescription as any).call(this, modifiedDescription);
   }
@@ -377,14 +421,28 @@ export function usePeerConnection() {
 
     call.on("stream", (remoteStream) => {
       setParticipants(prev => {
-        const exists = prev.some(p => p.peerId === peerId);
-        if (exists) {
-          return prev.map(p => p.peerId === peerId ? { ...p, stream: remoteStream } : p);
+        const existing = prev.find(p => p.peerId === peerId);
+        let finalStream = remoteStream;
+
+        if (existing && existing.stream) {
+          // Merge incoming independent audio/video tracks into a single MediaStream container for playout
+          const combinedStream = new MediaStream();
+          existing.stream.getTracks().forEach(t => combinedStream.addTrack(t));
+          remoteStream.getTracks().forEach(t => {
+            if (!combinedStream.getTracks().some(et => et.id === t.id)) {
+              combinedStream.addTrack(t);
+            }
+          });
+          finalStream = combinedStream;
+        }
+
+        if (existing) {
+          return prev.map(p => p.peerId === peerId ? { ...p, stream: finalStream } : p);
         } else {
           return [...prev, {
             peerId,
             name: info?.name || "Friend",
-            stream: remoteStream,
+            stream: finalStream,
             screenStream: null,
             micMuted: false,
             camDisabled: false,
