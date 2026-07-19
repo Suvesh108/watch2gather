@@ -295,9 +295,34 @@ export function usePeerConnection() {
     }]);
   }, []);
 
-  // ─── Apply fixed MAX quality encoding parameters — no adaptive scaling ────────
-  // Every sender always gets the highest possible bitrate regardless of peer count
+  // ─── Apply Adaptive quality encoding parameters based on peer count ──────────
   const applyEncodingParams = useCallback((pc: RTCPeerConnection, isScreen: boolean) => {
+    const peerCount = participantsRef.current.length;
+    
+    // Adaptive limits to prevent network/CPU saturation when more than 2 participants join
+    let targetBitrate = 1_500_000; // default 1.5 Mbps for 1-on-1 camera
+    let scaleDown = 1.0;
+
+    if (isScreen) {
+      if (peerCount === 2) {
+        targetBitrate = 2_000_000; // 2.0 Mbps
+      } else if (peerCount > 2) {
+        targetBitrate = 1_200_000; // 1.2 Mbps
+      } else {
+        targetBitrate = MAX_SCREEN_BITRATE; // 5.0 Mbps
+      }
+    } else {
+      if (peerCount === 2) {
+        targetBitrate = 800_000; // 800 Kbps
+        scaleDown = 1.5;         // Scale 720p down to ~480p
+      } else if (peerCount > 2) {
+        targetBitrate = 400_000; // 400 Kbps
+        scaleDown = 2.0;         // Scale 720p down to ~360p
+      } else {
+        targetBitrate = MAX_CAMERA_BITRATE; // 2.5 Mbps
+      }
+    }
+
     pc.getSenders().forEach(async sender => {
       if (!sender.track) return;
       const params = sender.getParameters();
@@ -305,20 +330,12 @@ export function usePeerConnection() {
       const enc = params.encodings[0];
 
       if (sender.track.kind === 'video') {
-        if (isScreen) {
-          enc.maxBitrate = MAX_SCREEN_BITRATE;  // 5 Mbps — full sharp 1080p screen
-          enc.maxFramerate = 30;
-          enc.scaleResolutionDownBy = 1.0;
-          enc.priority = 'high';
-          enc.networkPriority = 'high';
-          (params as any).degradationPreference = 'maintain-resolution'; // keep text sharp
-        } else {
-          enc.maxBitrate = MAX_CAMERA_BITRATE;  // 2.5 Mbps — HD 720p camera always
-          enc.maxFramerate = 30;
-          enc.priority = 'high';
-          enc.networkPriority = 'high';
-          (params as any).degradationPreference = 'maintain-framerate'; // keep motion smooth
-        }
+        enc.maxBitrate = targetBitrate;
+        enc.scaleResolutionDownBy = scaleDown;
+        enc.maxFramerate = isScreen ? 24 : 30; // Slightly lower screen share fps to save bandwidth in group calls
+        enc.priority = 'high';
+        enc.networkPriority = 'high';
+        (params as any).degradationPreference = isScreen ? 'maintain-resolution' : 'maintain-framerate';
       }
 
       if (sender.track.kind === 'audio') {
@@ -329,6 +346,18 @@ export function usePeerConnection() {
       try { await sender.setParameters(params); } catch (_) {}
     });
   }, []);
+
+  // Dynamically update encoding bitrates and resolutions on all active calls when participant count changes
+  useEffect(() => {
+    connectionsRef.current.forEach(item => {
+      if (item.mediaCall && item.mediaCall.peerConnection) {
+        applyEncodingParams(item.mediaCall.peerConnection, false);
+      }
+      if (item.screenCall && item.screenCall.peerConnection) {
+        applyEncodingParams(item.screenCall.peerConnection, true);
+      }
+    });
+  }, [participants.length, applyEncodingParams]);
 
 
 
