@@ -306,8 +306,12 @@ export function usePeerConnection() {
     if (isScreen) {
       if (peerCount === 2) {
         targetBitrate = 2_000_000; // 2.0 Mbps
-      } else if (peerCount > 2) {
-        targetBitrate = 1_200_000; // 1.2 Mbps
+      } else if (peerCount === 3) {
+        targetBitrate = 1_500_000; // 1.5 Mbps
+      } else if (peerCount >= 4 && peerCount <= 8) {
+        targetBitrate = 1_000_000; // 1.0 Mbps
+      } else if (peerCount > 8) {
+        targetBitrate = 600_000;   // 600 Kbps for 10-20 users to prevent network drops
       } else {
         targetBitrate = MAX_SCREEN_BITRATE; // 5.0 Mbps
       }
@@ -315,9 +319,15 @@ export function usePeerConnection() {
       if (peerCount === 2) {
         targetBitrate = 800_000; // 800 Kbps
         scaleDown = 1.5;         // Scale 720p down to ~480p
-      } else if (peerCount > 2) {
-        targetBitrate = 400_000; // 400 Kbps
+      } else if (peerCount === 3) {
+        targetBitrate = 500_000; // 500 Kbps
         scaleDown = 2.0;         // Scale 720p down to ~360p
+      } else if (peerCount >= 4 && peerCount <= 8) {
+        targetBitrate = 250_000; // 250 Kbps
+        scaleDown = 3.0;         // Scale 720p down to ~240p
+      } else if (peerCount > 8) {
+        targetBitrate = 120_000; // 120 Kbps
+        scaleDown = 4.0;         // Scale 720p down to ~180p (ideal for tiny participant grid tiles)
       } else {
         targetBitrate = MAX_CAMERA_BITRATE; // 2.5 Mbps
       }
