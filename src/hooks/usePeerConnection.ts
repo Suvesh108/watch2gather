@@ -25,11 +25,11 @@ RTCPeerConnection.prototype.setLocalDescription = function(description?: RTCLoca
       }
     }
 
-    // 2. Video optimization (Prioritize hardware H.264 and VP8 over AV1/VP9)
+    // 2. Video optimization (Prioritize hardware H.264)
     let lines = sdp.split('\r\n');
     let videoIdx = lines.findIndex(line => line.startsWith('m=video'));
     if (videoIdx !== -1) {
-      const codecPayloads = { H264: [] as string[], VP8: [] as string[] };
+      const h264Payloads: string[] = [];
       const rtpMapRegex = /^a=rtpmap:(\d+)\s+([\w-]+)\/\d+/i;
 
       lines.forEach(line => {
@@ -38,9 +38,7 @@ RTCPeerConnection.prototype.setLocalDescription = function(description?: RTCLoca
           const payloadType = match[1];
           const codecName = match[2].toUpperCase();
           if (codecName === 'H264') {
-            codecPayloads.H264.push(payloadType);
-          } else if (codecName === 'VP8') {
-            codecPayloads.VP8.push(payloadType);
+            h264Payloads.push(payloadType);
           }
         }
       });
@@ -50,11 +48,10 @@ RTCPeerConnection.prototype.setLocalDescription = function(description?: RTCLoca
       const header = parts.slice(0, 3); // "m=video", port, profile
       const originalPayloads = parts.slice(3);
 
-      const h264List = codecPayloads.H264.filter(pt => originalPayloads.includes(pt));
-      const vp8List = codecPayloads.VP8.filter(pt => originalPayloads.includes(pt));
-      const remaining = originalPayloads.filter(pt => !h264List.includes(pt) && !vp8List.includes(pt));
+      const h264List = h264Payloads.filter(pt => originalPayloads.includes(pt));
+      const remaining = originalPayloads.filter(pt => !h264List.includes(pt));
 
-      const sortedPayloads = [...h264List, ...vp8List, ...remaining];
+      const sortedPayloads = [...h264List, ...remaining];
       lines[videoIdx] = `${header.join(' ')} ${sortedPayloads.join(' ')}`;
       sdp = lines.join('\r\n');
     }
@@ -137,11 +134,6 @@ const PEER_CONFIG = {
     iceCandidatePoolSize: 4,                       // Pre-gather fewer ICE candidates for faster setup
   },
 };
-
-// ─── Maximum quality — no throttling regardless of user count ────────────────
-// User explicitly requested max quality at all times — data usage is not a concern
-const MAX_CAMERA_BITRATE  = 2_500_000; // 2.5 Mbps — crisp HD 720p camera for every user
-const MAX_SCREEN_BITRATE  = 5_000_000; // 5.0 Mbps — sharp 1080p screen share for every user
 
 
 
@@ -297,39 +289,25 @@ export function usePeerConnection() {
 
   // ─── Apply Adaptive quality encoding parameters based on peer count ──────────
   const applyEncodingParams = useCallback((pc: RTCPeerConnection, isScreen: boolean) => {
-    const peerCount = participantsRef.current.length;
+    const peerCount = connectionsRef.current.size;
     
-    // Adaptive limits to prevent network/CPU saturation when more than 2 participants join
-    let targetBitrate = 1_500_000; // default 1.5 Mbps for 1-on-1 camera
-    let scaleDown = 1.0;
+    let targetBitrate = 1_200_000;
 
     if (isScreen) {
-      if (peerCount === 2) {
-        targetBitrate = 2_000_000; // 2.0 Mbps
-      } else if (peerCount === 3) {
-        targetBitrate = 1_500_000; // 1.5 Mbps
-      } else if (peerCount >= 4 && peerCount <= 8) {
-        targetBitrate = 1_000_000; // 1.0 Mbps
-      } else if (peerCount > 8) {
-        targetBitrate = 600_000;   // 600 Kbps for 10-20 users to prevent network drops
+      if (peerCount === 1) {
+        targetBitrate = 2_500_000;
+      } else if (peerCount === 2) {
+        targetBitrate = 1_800_000;
       } else {
-        targetBitrate = MAX_SCREEN_BITRATE; // 5.0 Mbps
+        targetBitrate = 1_200_000;
       }
     } else {
-      if (peerCount === 2) {
-        targetBitrate = 800_000; // 800 Kbps
-        scaleDown = 1.5;         // Scale 720p down to ~480p
-      } else if (peerCount === 3) {
-        targetBitrate = 500_000; // 500 Kbps
-        scaleDown = 2.0;         // Scale 720p down to ~360p
-      } else if (peerCount >= 4 && peerCount <= 8) {
-        targetBitrate = 250_000; // 250 Kbps
-        scaleDown = 3.0;         // Scale 720p down to ~240p
-      } else if (peerCount > 8) {
-        targetBitrate = 120_000; // 120 Kbps
-        scaleDown = 4.0;         // Scale 720p down to ~180p (ideal for tiny participant grid tiles)
+      if (peerCount === 1) {
+        targetBitrate = 1_200_000;
+      } else if (peerCount === 2) {
+        targetBitrate = 700_000;
       } else {
-        targetBitrate = MAX_CAMERA_BITRATE; // 2.5 Mbps
+        targetBitrate = 400_000;
       }
     }
 
@@ -341,8 +319,7 @@ export function usePeerConnection() {
 
       if (sender.track.kind === 'video') {
         enc.maxBitrate = targetBitrate;
-        enc.scaleResolutionDownBy = scaleDown;
-        enc.maxFramerate = isScreen ? 24 : 30; // Slightly lower screen share fps to save bandwidth in group calls
+        enc.maxFramerate = isScreen ? 25 : 24;
         enc.priority = 'high';
         enc.networkPriority = 'high';
         (params as any).degradationPreference = isScreen ? 'maintain-resolution' : 'maintain-framerate';
@@ -357,8 +334,7 @@ export function usePeerConnection() {
     });
   }, []);
 
-  // Dynamically update encoding bitrates and resolutions on all active calls when participant count changes
-  useEffect(() => {
+  const reapplyAllEncodingParams = useCallback(() => {
     connectionsRef.current.forEach(item => {
       if (item.mediaCall && item.mediaCall.peerConnection) {
         applyEncodingParams(item.mediaCall.peerConnection, false);
@@ -367,7 +343,7 @@ export function usePeerConnection() {
         applyEncodingParams(item.screenCall.peerConnection, true);
       }
     });
-  }, [participants.length, applyEncodingParams]);
+  }, [applyEncodingParams]);
 
 
 
@@ -439,6 +415,7 @@ export function usePeerConnection() {
     }
     connectionsRef.current.delete(peerId);
     setParticipants(prev => prev.filter(p => p.peerId !== peerId));
+    reapplyAllEncodingParams();
 
     if (peerId.endsWith("-HOST")) {
       cleanup();
@@ -451,7 +428,7 @@ export function usePeerConnection() {
     } else {
       addSystemMsg(`${info?.name || "A participant"} left the watch party.`);
     }
-  }, [cleanup, addSystemMsg, setModal]);
+  }, [cleanup, addSystemMsg, setModal, reapplyAllEncodingParams]);
 
   const wireMediaCall = useCallback((call: MediaConnection) => {
     const peerId = call.peer;
@@ -563,6 +540,7 @@ export function usePeerConnection() {
 
       addSystemMsg(`${msg.name || "A friend"} joined the watch party ⚽`);
       startTimer();
+      reapplyAllEncodingParams();
 
       // Send the current timer seconds to the newly joined peer
       try {
@@ -627,7 +605,7 @@ export function usePeerConnection() {
       setTimerSeconds(msg.seconds);
       startTimer();
     }
-  }, [addSystemMsg, addChatMsg, localTriggerCelebration, startTimer, cleanup, wireMediaCall, setModal]);
+  }, [addSystemMsg, addChatMsg, localTriggerCelebration, startTimer, cleanup, wireMediaCall, setModal, reapplyAllEncodingParams]);
 
   // ─── Helper: route low-priority messages through unreliable channel ────────────
   // Falls back to reliable dataConn if rtDataConn not yet open
